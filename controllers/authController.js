@@ -10,6 +10,86 @@ import { sendWhatsappOTP } from "../utils/sendOTP.js";
 
 const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
 
+const createUser = asyncHandler(async (req, res) => {
+  const { name, phone, roll, email, gender, dob, address, occupation } =
+    req.body;
+
+  if (!phone) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "Phone number is required"));
+  }
+
+  const phoneRegex = /^[0-9]{10}$/;
+  if (!phoneRegex.test(phone)) {
+    return res
+      .status(400)
+      .json(
+        new apiResponse(400, null, "Phone number must be exactly 10 digits")
+      );
+  }
+
+  if (!email) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "Email is required"));
+  }
+
+  try {
+    // Check if user already exists
+    let existingUser = await User.findOne({ phone });
+    if (existingUser) {
+      return res
+        .status(400)
+        .json(
+          new apiResponse(400, null, "User with this phone already exists")
+        );
+    }
+
+    const salt = await bcrypt.genSalt(10); // You can change the number of rounds if needed
+
+    // Generate auto password
+    // const plainPassword = generatePasswordFromName(name || "user");
+    const plainPassword = `Abc@123`;
+    const hashedPassword = await bcrypt.hash(plainPassword, salt);
+
+    // Create new user
+    const newUser = new User({
+      phone,
+      name,
+      email,
+      gender,
+      dob,
+      roll,
+      address,
+      occupation,
+      password: hashedPassword,
+      isNew: false,
+    });
+
+    await newUser.save();
+
+    return res.status(201).json(
+      new apiResponse(
+        201,
+        {
+          userId: newUser._id,
+          phone: newUser.phone,
+          name: newUser.name,
+          roll: newUser.roll,
+          password: plainPassword,
+        },
+        "User created successfully"
+      )
+    );
+  } catch (error) {
+    console.error("Error creating user:", error);
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
+  }
+});
+
 const registerOrLogin = asyncHandler(async (req, res) => {
   const { phone } = req.body;
 
@@ -116,6 +196,7 @@ const verifyOtp = asyncHandler(async (req, res) => {
       name: user.name,
       email: user.email,
       gender: user.gender,
+      roll: user.roll,
       isNew: user.isNew,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
@@ -343,6 +424,7 @@ const loginWithPassword = asyncHandler(async (req, res) => {
       email: existingUser.email,
       gender: existingUser.gender,
       isNew: existingUser.isNew,
+      roll: existingUser.roll,
       createdAt: existingUser.createdAt,
       updatedAt: existingUser.updatedAt,
       authToken: token,
@@ -502,6 +584,7 @@ const updateUserRoll = asyncHandler(async (req, res) => {
 
 export {
   registerOrLogin,
+  createUser,
   verifyOtp,
   resendOtp,
   updateUserById,

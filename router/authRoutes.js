@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createPassword,
+  createUser,
   deleteUser,
   getAllUsers,
   getProfile,
@@ -21,19 +22,17 @@ const routes = Router();
 
 // auth
 routes.route("/registerOrLogin").post(registerOrLogin);
+routes.route("/createUser").post(createUser);
 routes.route("/verifyOtp").post(verifyOtp);
 routes.route("/resendOtp").post(resendOtp);
 routes.route("/update/:id").patch(updateUserById);
-routes.route("/delete/:id").delete(verifyJWT,deleteUser);
+routes.route("/delete/:id").delete(verifyJWT, deleteUser);
 routes.route("/getAllUsers").get(getAllUsers);
-routes.route("/profile").get(verifyJWT,getProfile);
+routes.route("/profile").get(verifyJWT, getProfile);
 routes.route("/loginWithPassword").post(loginWithPassword);
-routes.route("/createPassword").post(verifyJWT,createPassword);
-routes.route("/updatePassword").post(verifyJWT,updatePassword);
+routes.route("/createPassword").post(verifyJWT, createPassword);
+routes.route("/updatePassword").post(verifyJWT, updatePassword);
 routes.route("/updateRoll/:userId").put(updateUserRoll);
-
-
-
 
 // routes.route("/sendOtp").post(register);
 // routes.route("/login").post(login);

@@ -18,7 +18,7 @@ const UserSchema = new mongoose.Schema(
     },
     otpExpiration: {
       type: Date,
-      required: true,
+      // required: true,
     },
     name: {
       type: String,
