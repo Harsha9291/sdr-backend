@@ -7,6 +7,8 @@ import uploadRoutes from "./router/uploadRoutes.js";
 import leadsRoutes from "./router/LeadsRoutes.js";
 import platformRoutes from "./router/PlatformRoutes.js";
 import leadsLogRoutes from "./router/leadHistoryRoutes.js";
+import leadStatusRoutes from "./router/LeadStatusRoutes.js";
+import leadActionRoutes from "./router/LeadActionRoutes.js";
 
 dotenv.config();
 
@@ -28,6 +30,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/platform", platformRoutes);
 app.use("/api/leads", leadsRoutes);
 app.use("/api/leadsLog", leadsLogRoutes);
+app.use("/api/leadStatus", leadStatusRoutes);
+app.use("/api/leadAction", leadActionRoutes);
 
 const PORT = process.env.PORT || 5000;
 

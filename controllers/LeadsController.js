@@ -4,9 +4,23 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
 import mongoose from "mongoose";
 
+/* ======================================================
+   🟢 Add Single Lead
+====================================================== */
 const addLead = asyncHandler(async (req, res) => {
   try {
-    const { phone, name, gender, email, platfrom, remark, leadDate } = req.body;
+    const {
+      phone,
+      name,
+      gender,
+      email,
+      assignTo,
+      platform,
+      remark,
+      leadDate,
+      action,
+      status,
+    } = req.body;
 
     if (!phone) {
       return res
@@ -28,10 +42,26 @@ const addLead = asyncHandler(async (req, res) => {
       name,
       gender,
       email,
-      platfrom,
+      platform,
+      assignTo,
       remark,
       leadDate: leadDate || new Date(),
+      action,
+      status,
     });
+
+    const historyData = {
+      leadId: newLead._id,
+      employeeId: newLead.assignTo || null,
+      actionType: newLead.assignTo ? "Lead Added & Assigned" : "Lead Added",
+      previousStatus: null,
+      status: newLead.status || "Fresh",
+      comment: null,
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+    };
+
+    await LeadHistory.create(historyData);
 
     res
       .status(201)
@@ -45,6 +75,9 @@ const addLead = asyncHandler(async (req, res) => {
   }
 });
 
+/* ======================================================
+   🟢 Bulk Add Leads
+====================================================== */
 const bulkAddLeads = asyncHandler(async (req, res) => {
   const leads = req.body.leads;
 
@@ -55,7 +88,6 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
   }
 
   try {
-    // 🔹 Remove duplicates inside the uploaded list by phone number
     const uniqueLeads = leads.filter(
       (item, index, self) =>
         index ===
@@ -65,41 +97,69 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
         )
     );
 
-    // 🔹 Check existing leads in DB (by phone)
-    const existingPhones = await Leads.find({
+    const existingLeads = await Leads.find({
       phone: { $in: uniqueLeads.map((l) => l.phone) },
-    }).distinct("phone");
+    }).select("_id phone assignTo");
 
-    // 🔹 Filter out already existing leads
+    const existingPhones = existingLeads.map((l) => l.phone);
+
     const newLeads = uniqueLeads.filter(
       (l) => !existingPhones.includes(l.phone)
     );
 
-    if (newLeads.length === 0) {
-      return res
-        .status(200)
-        .json(new apiResponse(200, [], "All provided leads already exist"));
+    let insertedLeads = [];
+    if (newLeads.length > 0) {
+      const formattedLeads = newLeads.map((lead) => ({
+        phone: lead.phone?.trim(),
+        name: lead.name || "",
+        gender: lead.gender || "",
+        email: lead.email?.toLowerCase() || "",
+        platform: lead.platform || "",
+        remark: lead.remark || "",
+        leadDate: lead.leadDate ? new Date(lead.leadDate) : new Date(),
+        assignTo: lead.assignTo || null,
+        action: lead.action || null,
+        status: lead.status || null,
+      }));
+
+      const BATCH_SIZE = 1000;
+      for (let i = 0; i < formattedLeads.length; i += BATCH_SIZE) {
+        const batch = formattedLeads.slice(i, i + BATCH_SIZE);
+        const inserted = await Leads.insertMany(batch, { ordered: false });
+        insertedLeads.push(...inserted);
+      }
     }
 
-    // 🔹 Add default values if missing
-    const formattedLeads = newLeads.map((lead) => ({
-      phone: lead.phone?.trim(),
-      name: lead.name || "",
-      gender: lead.gender || "",
-      email: lead.email?.toLowerCase() || "",
-      platfrom: lead.platfrom || "",
-      remark: lead.remark || "",
-      leadDate: lead.leadDate ? new Date(lead.leadDate) : new Date(),
-      assignTo: lead.assignTo || null,
-    }));
+    const allHistoryLogs = [];
 
-    // 🔹 Insert in batches for performance
-    const BATCH_SIZE = 1000;
-    let insertedCount = 0;
-    for (let i = 0; i < formattedLeads.length; i += BATCH_SIZE) {
-      const batch = formattedLeads.slice(i, i + BATCH_SIZE);
-      const inserted = await Leads.insertMany(batch, { ordered: false });
-      insertedCount += inserted.length;
+    insertedLeads.forEach((lead) => {
+      allHistoryLogs.push({
+        leadId: lead._id,
+        employeeId: lead.assignTo || null,
+        actionType: lead.assignTo ? "Lead Added & Assigned" : "Lead Added",
+        previousStatus: null,
+        status: "Fresh",
+        comment: null,
+        performedBy: req.user?._id || null,
+        performedAt: new Date(),
+      });
+    });
+
+    existingLeads.forEach((lead) => {
+      allHistoryLogs.push({
+        leadId: lead._id,
+        employeeId: lead.assignTo || null,
+        actionType: "Duplicate Lead Attempted",
+        previousStatus: null,
+        status: "Duplicate",
+        comment: "This lead already existed in the system.",
+        performedBy: req.user?._id || null,
+        performedAt: new Date(),
+      });
+    });
+
+    if (allHistoryLogs.length > 0) {
+      await LeadHistory.insertMany(allHistoryLogs, { ordered: false });
     }
 
     res.status(201).json(
@@ -108,20 +168,23 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
         {
           totalReceived: leads.length,
           totalUnique: uniqueLeads.length,
-          insertedCount,
+          insertedCount: insertedLeads.length,
           skippedDuplicates: existingPhones.length,
+          duplicateLogged: existingPhones.length,
         },
-        `${insertedCount} new leads inserted successfully`
+        `${insertedLeads.length} new leads inserted successfully, ${existingPhones.length} duplicates logged`
       )
     );
   } catch (error) {
-    console.error("Bulk insert error:", error);
     res
       .status(500)
       .json(new apiResponse(500, null, `Bulk insert error: ${error.message}`));
   }
 });
 
+/* ======================================================
+   🟢 Update Lead
+====================================================== */
 const updateLead = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
@@ -131,25 +194,49 @@ const updateLead = asyncHandler(async (req, res) => {
       return res.status(404).json(new apiResponse(404, null, "Lead not found"));
     }
 
-    // Keep track of previous status
-    const previousStatus = lead.status;
-
-    // Update lead fields
     Object.keys(req.body).forEach((key) => {
       lead[key] = req.body[key];
     });
 
     await lead.save();
 
-    // Create LeadHistory log
+    res
+      .status(200)
+      .json(new apiResponse(200, lead, "Lead updated successfully and logged"));
+  } catch (error) {
+    res
+      .status(500)
+      .json(
+        new apiResponse(500, null, `Error updating lead: ${error.message}`)
+      );
+  }
+});
+
+const updateStatus = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await Leads.findById(id);
+
+    if (!lead) {
+      return res.status(404).json(new apiResponse(404, null, "Lead not found"));
+    }
+
+    const previousStatus = lead.status;
+    const previousAction = lead.action;
+
+    Object.keys(req.body).forEach((key) => {
+      lead[key] = req.body[key];
+    });
+
+    await lead.save();
+
     const historyData = {
       leadId: lead._id,
       employeeId: lead.assignTo || null,
-      actionType: req.body.actionType || "STATUS_CHANGED",
-      previousStatus: previousStatus,
-      status: lead.status || previousStatus,
-      comment: req.body.comment || null, // optional comment
-      performedBy: req.user?._id || null, // user performing the update
+      actionType: req.body.actionType || "Lead Updated",
+      status: lead.status,
+      comment: req.body.comment || null,
+      performedBy: req.user?._id || null,
       performedAt: new Date(),
     };
 
@@ -167,6 +254,9 @@ const updateLead = asyncHandler(async (req, res) => {
   }
 });
 
+/* ======================================================
+   🟢 Delete Lead
+====================================================== */
 const deleteLead = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
@@ -190,6 +280,10 @@ const deleteLead = asyncHandler(async (req, res) => {
   }
 });
 
+/* ======================================================
+   🟢 Get All Leads (with populated refs)
+====================================================== */
+
 const getAllLeads = asyncHandler(async (req, res) => {
   const {
     isPagination = "true",
@@ -200,10 +294,9 @@ const getAllLeads = asyncHandler(async (req, res) => {
     fromDate,
     toDate,
     assignTo,
-    platfrom, // new query param for filtering by platform
   } = req.query;
 
-  let pipeline = [];
+  const pipeline = [];
 
   // 🔍 Search filter
   if (search) {
@@ -214,39 +307,41 @@ const getAllLeads = asyncHandler(async (req, res) => {
           { name: regex },
           { phone: regex },
           { email: regex },
-          { platfrom: regex },
+          { platform: regex },
           { remark: regex },
         ],
       },
     });
   }
 
-  // 📅 Date filter by leadDate
+  // 📅 Date filter (fixed)
   if (fromDate || toDate) {
     const dateFilter = {};
-    if (fromDate) dateFilter.$gte = new Date(fromDate);
-    if (toDate) dateFilter.$lte = new Date(toDate);
+    if (fromDate) {
+      const from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      dateFilter.$gte = from;
+    }
+    if (toDate) {
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+      dateFilter.$lte = to;
+    }
     pipeline.push({ $match: { leadDate: dateFilter } });
   }
 
-  // 👤 Filter by assignTo userId
+  // 👤 Assigned user filter
   if (assignTo && mongoose.Types.ObjectId.isValid(assignTo)) {
     pipeline.push({
       $match: { assignTo: new mongoose.Types.ObjectId(assignTo) },
     });
   }
 
-  // 🌐 Filter by platform
-  if (platfrom) {
-    const platformRegex = new RegExp(platfrom, "i");
-    pipeline.push({ $match: { platfrom: platformRegex } });
-  }
-
-  // 📅 Sorting
+  // 🔽 Sorting
   if (sortBy === "recent") pipeline.push({ $sort: { createdAt: -1 } });
   else if (sortBy === "oldest") pipeline.push({ $sort: { createdAt: 1 } });
 
-  // 👤 Populate assignTo (selected fields only)
+  // 👥 Lookup: populate assignTo
   pipeline.push({
     $lookup: {
       from: "users",
@@ -260,7 +355,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
             email: 1,
             phone: 1,
             gender: 1,
-            roll: 1,
+            role: 1,
             occupation: 1,
             address: 1,
             profilepic: 1,
@@ -275,32 +370,31 @@ const getAllLeads = asyncHandler(async (req, res) => {
     $unwind: { path: "$assignTo", preserveNullAndEmptyArrays: true },
   });
 
-  // 🎯 Select specific fields to show
+  // 🧹 Clean empty/null fields
   pipeline.push({
-    $project: {
-      name: 1,
-      phone: 1,
-      email: 1,
-      platfrom: 1,
-      remark: 1,
-      leadDate: 1,
-      createdAt: 1,
-      "assignTo._id": 1,
-      "assignTo.name": 1,
-      "assignTo.email": 1,
-      "assignTo.phone": 1,
-      "assignTo.gender": 1,
-      "assignTo.roll": 1,
-      "assignTo.occupation": 1,
-      "assignTo.profilepic": 1,
+    $replaceRoot: {
+      newRoot: {
+        $arrayToObject: {
+          $filter: {
+            input: { $objectToArray: "$$ROOT" },
+            as: "field",
+            cond: {
+              $and: [
+                { $ne: ["$$field.v", null] },
+                { $ne: ["$$field.v", ""] },
+                { $ne: ["$$field.v", []] },
+              ],
+            },
+          },
+        },
+      },
     },
   });
 
-  // 📊 Total count before pagination
+  // 📊 Pagination & total count
   const totalData = await Leads.aggregate([...pipeline, { $count: "count" }]);
   const total = totalData[0]?.count || 0;
 
-  // ⏩ Pagination
   if (isPagination === "true") {
     pipeline.push({ $skip: (page - 1) * limit }, { $limit: parseInt(limit) });
   }
@@ -321,13 +415,18 @@ const getAllLeads = asyncHandler(async (req, res) => {
   );
 });
 
+/* ======================================================
+   🟢 Get Lead by ID
+====================================================== */
 const getLeadById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const lead = await Leads.findById(id).populate(
-    "assignTo",
-    "name email phone gender roll occupation profilepic"
-  );
+  const lead = await Leads.findById(id)
+    .populate("assignTo", "name email phone gender occupation profilepic")
+    .populate("action", "title")
+    .populate("status", "title")
+    .populate("prevAction", "title")
+    .populate("prevStatus", "title");
 
   if (!lead)
     return res.status(404).json(new apiResponse(404, null, "Lead not found"));
@@ -335,6 +434,9 @@ const getLeadById = asyncHandler(async (req, res) => {
   res.status(200).json(new apiResponse(200, lead, "Lead fetched successfully"));
 });
 
+/* ======================================================
+   🟢 Assign Leads (manual / auto)
+====================================================== */
 const assignLeads = asyncHandler(async (req, res) => {
   const { type, employeeId, employeeIds, leadIds } = req.body;
 
@@ -344,7 +446,6 @@ const assignLeads = asyncHandler(async (req, res) => {
       .json(new apiResponse(400, null, "Invalid assignment type"));
   }
 
-  // ---------- MANUAL ----------
   if (type === "manual") {
     if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
       return res
@@ -355,19 +456,12 @@ const assignLeads = asyncHandler(async (req, res) => {
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
       return res
         .status(400)
-        .json(
-          new apiResponse(
-            400,
-            null,
-            "Lead IDs are required for manual assignment"
-          )
-        );
+        .json(new apiResponse(400, null, "Lead IDs are required"));
     }
 
     const updatedLeads = await Leads.updateMany(
-      { _id: { $in: leadIds.map((id) => new mongoose.Types.ObjectId(id)) } },
-      { $set: { assignTo: new mongoose.Types.ObjectId(employeeId) } },
-      { multi: true }
+      { _id: { $in: leadIds } },
+      { $set: { assignTo: employeeId } }
     );
 
     return res
@@ -381,41 +475,23 @@ const assignLeads = asyncHandler(async (req, res) => {
       );
   }
 
-  // ---------- AUTO ----------
   if (type === "auto") {
     if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
       return res
         .status(400)
-        .json(
-          new apiResponse(
-            400,
-            null,
-            "Employee IDs are required for auto assignment"
-          )
-        );
+        .json(new apiResponse(400, null, "Employee IDs are required"));
     }
 
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
       return res
         .status(400)
-        .json(
-          new apiResponse(
-            400,
-            null,
-            "Lead IDs are required for auto assignment"
-          )
-        );
+        .json(new apiResponse(400, null, "Lead IDs are required"));
     }
 
-    // Round-robin assignment
     const updates = leadIds.map((leadId, index) => ({
       updateOne: {
-        filter: { _id: new mongoose.Types.ObjectId(leadId) },
-        update: {
-          assignTo: new mongoose.Types.ObjectId(
-            employeeIds[index % employeeIds.length]
-          ),
-        },
+        filter: { _id: leadId },
+        update: { assignTo: employeeIds[index % employeeIds.length] },
       },
     }));
 
@@ -427,7 +503,7 @@ const assignLeads = asyncHandler(async (req, res) => {
         new apiResponse(
           200,
           result,
-          `Leads assigned automatically (round-robin) to selected employees successfully`
+          `Leads assigned automatically (round-robin) to selected employees`
         )
       );
   }
@@ -435,10 +511,10 @@ const assignLeads = asyncHandler(async (req, res) => {
 
 export {
   addLead,
+  bulkAddLeads,
   updateLead,
   deleteLead,
   getAllLeads,
   getLeadById,
-  bulkAddLeads,
   assignLeads,
 };

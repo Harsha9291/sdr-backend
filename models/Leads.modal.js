@@ -2,39 +2,57 @@ import mongoose from "mongoose";
 
 const LeadsSchema = new mongoose.Schema(
   {
+    leadCode: {
+      type: String,
+      unique: true,
+      index: true,
+    },
     phone: {
       type: String,
       required: true,
     },
-    name: {
-      type: String,
-    },
+    name: String,
     gender: {
       type: String,
+      enum: ["Male", "Female", "Other"],
     },
     email: {
       type: String,
       trim: true,
       lowercase: true,
     },
-    platfrom: {
-      type: String,
+    platform: String,
+
+    action: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
     },
     status: {
-      type: String,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadStatus",
     },
-    remark: {
-      type: String,
+    prevAction: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
     },
-    comment: {
-      type: String,
+    prevStatus: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadStatus",
     },
+
+    followUpDate: Date,
+    followUpTime: String,
+    remark: String,
+    comment: String,
+
     assignTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
+
     leadDate: {
       type: Date,
+      default: Date.now,
     },
   },
   {
@@ -42,6 +60,16 @@ const LeadsSchema = new mongoose.Schema(
   }
 );
 
-const Leads = mongoose.model("Leads", LeadsSchema);
+// ⚙️ Pre-save hook to generate unique numeric lead code
+LeadsSchema.pre("save", function (next) {
+  if (this.leadCode) return next();
 
+  // Generate a random 8-digit number
+  const randomNumber = Math.floor(10000000 + Math.random() * 90000000);
+
+  this.leadCode = `LEAD-${randomNumber}`;
+  next();
+});
+
+const Leads = mongoose.model("Leads", LeadsSchema);
 export default Leads;
