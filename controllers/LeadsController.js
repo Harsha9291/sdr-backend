@@ -294,6 +294,9 @@ const getAllLeads = asyncHandler(async (req, res) => {
     fromDate,
     toDate,
     assignTo,
+    status,
+    action,
+    platformId,
   } = req.query;
 
   const pipeline = [];
@@ -314,7 +317,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
     });
   }
 
-  // 📅 Date filter (fixed)
+  // 📅 Date filter
   if (fromDate || toDate) {
     const dateFilter = {};
     if (fromDate) {
@@ -336,41 +339,115 @@ const getAllLeads = asyncHandler(async (req, res) => {
       $match: { assignTo: new mongoose.Types.ObjectId(assignTo) },
     });
   }
+  if (status && mongoose.Types.ObjectId.isValid(status)) {
+    pipeline.push({
+      $match: { status: new mongoose.Types.ObjectId(status) },
+    });
+  }
+  if (action && mongoose.Types.ObjectId.isValid(action)) {
+    pipeline.push({
+      $match: { action: new mongoose.Types.ObjectId(action) },
+    });
+  }
+
+  if (platformId) {
+    pipeline.push({
+      $match: { platform: Number(platformId) },
+    });
+  }
 
   // 🔽 Sorting
   if (sortBy === "recent") pipeline.push({ $sort: { createdAt: -1 } });
   else if (sortBy === "oldest") pipeline.push({ $sort: { createdAt: 1 } });
 
-  // 👥 Lookup: populate assignTo
+  // ==========================================
+  // 🟦 POPULATE assignTo (User)
+  // ==========================================
   pipeline.push({
     $lookup: {
       from: "users",
-      let: { userId: "$assignTo" },
-      pipeline: [
-        { $match: { $expr: { $eq: ["$_id", "$$userId"] } } },
-        {
-          $project: {
-            _id: 1,
-            name: 1,
-            email: 1,
-            phone: 1,
-            gender: 1,
-            role: 1,
-            occupation: 1,
-            address: 1,
-            profilepic: 1,
-          },
-        },
-      ],
+      localField: "assignTo",
+      foreignField: "_id",
       as: "assignTo",
     },
   });
-
   pipeline.push({
     $unwind: { path: "$assignTo", preserveNullAndEmptyArrays: true },
   });
 
-  // 🧹 Clean empty/null fields
+  // ==========================================
+  // 🟩 POPULATE action (LeadAction)
+  // ==========================================
+  pipeline.push({
+    $lookup: {
+      from: "leadactions",
+      localField: "action",
+      foreignField: "_id",
+      as: "action",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$action", preserveNullAndEmptyArrays: true },
+  });
+
+  // ==========================================
+  // 🟪 POPULATE status (LeadStatus)
+  // ==========================================
+  pipeline.push({
+    $lookup: {
+      from: "leadstatuses",
+      localField: "status",
+      foreignField: "_id",
+      as: "status",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$status", preserveNullAndEmptyArrays: true },
+  });
+
+  // ==========================================
+  // 🟧 POPULATE prevAction
+  // ==========================================
+  pipeline.push({
+    $lookup: {
+      from: "leadactions",
+      localField: "prevAction",
+      foreignField: "_id",
+      as: "prevAction",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$prevAction", preserveNullAndEmptyArrays: true },
+  });
+
+  // ==========================================
+  // 🟥 POPULATE prevStatus
+  // ==========================================
+  pipeline.push({
+    $lookup: {
+      from: "leadstatuses",
+      localField: "prevStatus",
+      foreignField: "_id",
+      as: "prevStatus",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$prevStatus", preserveNullAndEmptyArrays: true },
+  });
+
+  pipeline.push({
+    $lookup: {
+      from: "platforms",
+      localField: "platform",
+      foreignField: "PlatformId",
+      as: "platformData",
+    },
+  });
+  pipeline.push({
+    $unwind: { path: "$platformData", preserveNullAndEmptyArrays: true },
+  });
+
+  // 🧹 Clean empty fields
   pipeline.push({
     $replaceRoot: {
       newRoot: {
@@ -391,10 +468,11 @@ const getAllLeads = asyncHandler(async (req, res) => {
     },
   });
 
-  // 📊 Pagination & total count
+  // 📊 Total Count
   const totalData = await Leads.aggregate([...pipeline, { $count: "count" }]);
   const total = totalData[0]?.count || 0;
 
+  // 📄 Pagination
   if (isPagination === "true") {
     pipeline.push({ $skip: (page - 1) * limit }, { $limit: parseInt(limit) });
   }

@@ -21,8 +21,7 @@ const LeadsSchema = new mongoose.Schema(
       trim: true,
       lowercase: true,
     },
-    platform: String,
-
+    platform: Number,
     action: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadAction",
