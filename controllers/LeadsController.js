@@ -297,6 +297,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
     status,
     action,
     platformId,
+    currentStatus,
   } = req.query;
 
   const pipeline = [];
@@ -353,6 +354,12 @@ const getAllLeads = asyncHandler(async (req, res) => {
   if (platformId) {
     pipeline.push({
       $match: { platform: Number(platformId) },
+    });
+  }
+
+  if (currentStatus) {
+    pipeline.push({
+      $match: { currentStatus },
     });
   }
 
@@ -587,6 +594,84 @@ const assignLeads = asyncHandler(async (req, res) => {
   }
 });
 
+const getLeadCountByStatus1 = asyncHandler(async (req, res) => {
+  try {
+    const result = await Leads.aggregate([
+      {
+        $lookup: {
+          from: "leadstatuses",
+          localField: "status",
+          foreignField: "_id",
+          as: "statusData",
+        },
+      },
+      {
+        $unwind: {
+          path: "$statusData",
+          preserveNullAndEmptyArrays: true,
+        },
+      },
+      {
+        $group: {
+          _id: "$statusData._id",
+          statusTitle: { $first: "$statusData.title" },
+          totalLeads: { $sum: 1 },
+        },
+      },
+      {
+        $sort: { totalLeads: -1 },
+      },
+    ]);
+
+    res
+      .status(200)
+      .json(
+        new apiResponse(
+          200,
+          result,
+          "Leads count by status fetched successfully"
+        )
+      );
+  } catch (error) {
+    res.status(500).json(new apiResponse(500, null, error.message));
+  }
+});
+
+const getLeadCountByStatus = asyncHandler(async (req, res) => {
+  try {
+    const result = await Leads.aggregate([
+      {
+        $group: {
+          _id: "$currentStatus",
+          totalLeads: { $sum: 1 },
+        },
+      },
+      {
+        $project: {
+          currentStatus: "$_id",
+          totalLeads: 1,
+          _id: 0,
+        },
+      },
+      {
+        $sort: { totalLeads: -1 },
+      },
+    ]);
+
+    res
+      .status(200)
+      .json(
+        new apiResponse(
+          200,
+          result,
+          "Lead count by currentStatus fetched successfully"
+        )
+      );
+  } catch (error) {
+    res.status(500).json(new apiResponse(500, null, error.message));
+  }
+});
+
 export {
   addLead,
   bulkAddLeads,
@@ -595,4 +680,5 @@ export {
   getAllLeads,
   getLeadById,
   assignLeads,
+  getLeadCountByStatus,
 };

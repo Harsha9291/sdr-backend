@@ -43,6 +43,10 @@ const LeadsSchema = new mongoose.Schema(
     followUpTime: String,
     remark: String,
     comment: String,
+    currentStatus: {
+      type: String,
+      default: "Fresh",
+    },
 
     assignTo: {
       type: mongoose.Schema.Types.ObjectId,
