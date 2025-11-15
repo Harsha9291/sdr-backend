@@ -3,49 +3,39 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
 import mongoose from "mongoose";
 
-// ✅ Add single lead status
+// -------------------------------------
+// ADD SINGLE LEAD STATUS
+// -------------------------------------
 const addLeadStatus = asyncHandler(async (req, res) => {
-  try {
-    const { title, status } = req.body;
+  const { title, action } = req.body;
 
-    if (!title) {
-      return res
-        .status(400)
-        .json(new apiResponse(400, null, "Lead status title is required"));
-    }
-
-    // Check if already exists
-    const existing = await LeadStatus.findOne({ title: title.trim() });
-    if (existing) {
-      return res
-        .status(400)
-        .json(new apiResponse(400, null, "Lead status already exists"));
-    }
-
-    const newStatus = await LeadStatus.create({
-      title: title.trim(),
-      status: status ?? true,
-    });
-
-    res
-      .status(201)
-      .json(
-        new apiResponse(201, newStatus, "Lead status created successfully")
-      );
-  } catch (error) {
-    res
-      .status(500)
-      .json(
-        new apiResponse(
-          500,
-          null,
-          `Error creating lead status: ${error.message}`
-        )
-      );
+  if (!title) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "Lead status title is required"));
   }
+
+  // check duplicate
+  // const existing = await LeadStatus.findOne({ title: title.trim() });
+  // if (existing) {
+  //   return res
+  //     .status(400)
+  //     .json(new apiResponse(400, null, "Lead status already exists"));
+  // }
+
+  const newStatus = await LeadStatus.create({
+    title: title.trim(),
+    action: action || null,
+  });
+
+  res
+    .status(201)
+    .json(new apiResponse(201, newStatus, "Lead status created successfully"));
 });
 
-// ✅ Bulk add lead statuses
+// -------------------------------------
+// BULK ADD LEAD STATUSES
+// -------------------------------------
 const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
   const statuses = req.body.statuses;
 
@@ -55,99 +45,123 @@ const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
       .json(new apiResponse(400, null, "Invalid or empty statuses array"));
   }
 
-  try {
-    // Remove duplicates in request
-    const uniqueStatuses = statuses.filter(
-      (item, index, self) =>
-        index ===
-        self.findIndex(
-          (t) =>
-            t.title?.trim().toLowerCase() === item.title?.trim().toLowerCase()
-        )
-    );
-
-    // Check existing in DB
-    const existingTitles = await LeadStatus.find({
-      title: { $in: uniqueStatuses.map((s) => s.title.trim()) },
-    }).distinct("title");
-
-    // Filter out existing
-    const newStatuses = uniqueStatuses.filter(
-      (s) => !existingTitles.includes(s.title.trim())
-    );
-
-    if (newStatuses.length === 0) {
-      return res
-        .status(200)
-        .json(new apiResponse(200, [], "All lead statuses already exist"));
-    }
-
-    // Insert new
-    const inserted = await LeadStatus.insertMany(
-      newStatuses.map((s) => ({
-        title: s.title.trim(),
-        status: s.status ?? true,
-      })),
-      { ordered: false }
-    );
-
-    res.status(201).json(
-      new apiResponse(
-        201,
-        {
-          totalReceived: statuses.length,
-          insertedCount: inserted.length,
-        },
-        `${inserted.length} new lead statuses added successfully`
+  // Remove duplicate titles in request
+  const unique = statuses.filter(
+    (item, i, arr) =>
+      i ===
+      arr.findIndex(
+        (v) =>
+          v.title?.trim().toLowerCase() === item.title?.trim().toLowerCase()
       )
-    );
-  } catch (error) {
-    res
-      .status(500)
-      .json(new apiResponse(500, null, `Bulk insert error: ${error.message}`));
+  );
+
+  // Check existing titles in DB
+  const existingTitles = await LeadStatus.find({
+    title: { $in: unique.map((s) => s.title.trim()) },
+  }).distinct("title");
+
+  const toInsert = unique.filter(
+    (s) => !existingTitles.includes(s.title.trim())
+  );
+
+  if (toInsert.length === 0) {
+    return res
+      .status(200)
+      .json(new apiResponse(200, [], "All lead statuses already exist"));
   }
+
+  const inserted = await LeadStatus.insertMany(
+    toInsert.map((s) => ({
+      title: s.title.trim(),
+      action: s.action || null,
+    })),
+    { ordered: false }
+  );
+
+  res.status(201).json(
+    new apiResponse(
+      201,
+      {
+        totalReceived: statuses.length,
+        insertedCount: inserted.length,
+      },
+      `${inserted.length} new lead statuses added successfully`
+    )
+  );
 });
 
-// ✅ Get all lead statuses
+// -------------------------------------
+// GET ALL STATUSES
+// -------------------------------------
 const getAllLeadStatuses = asyncHandler(async (req, res) => {
-  const { search, sortBy = "recent" } = req.query;
+  const {
+    search,
+    sortBy = "recent",
+    action,
+    isPagination = "true",
+    page = 1,
+    limit = 10,
+  } = req.query;
 
-  let query = {};
+  const query = {};
+
+  // Search filter
   if (search) {
-    const regex = new RegExp(search, "i");
-    query.title = regex;
+    query.title = new RegExp(search, "i");
   }
 
-  let leadStatusQuery = LeadStatus.find(query);
+  // Action filter
+  if (action && mongoose.Types.ObjectId.isValid(action)) {
+    query.action = action;
+  }
+
+  let q = LeadStatus.find(query);
 
   // Sorting
-  if (sortBy === "recent")
-    leadStatusQuery = leadStatusQuery.sort({ createdAt: -1 });
-  else if (sortBy === "oldest")
-    leadStatusQuery = leadStatusQuery.sort({ createdAt: 1 });
+  if (sortBy === "recent") q.sort({ createdAt: -1 });
+  if (sortBy === "oldest") q.sort({ createdAt: 1 });
 
-  const leadStatuses = await leadStatusQuery;
+  // Pagination logic
+  const shouldPaginate = isPagination === "true";
 
-  res
-    .status(200)
-    .json(
-      new apiResponse(200, leadStatuses, "Lead statuses fetched successfully")
-    );
+  let total = await LeadStatus.countDocuments(query);
+
+  if (shouldPaginate) {
+    const skip = (Number(page) - 1) * Number(limit);
+    q = q.skip(skip).limit(Number(limit));
+  }
+
+  const data = await q.populate("action");
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        total,
+        page: shouldPaginate ? Number(page) : null,
+        limit: shouldPaginate ? Number(limit) : null,
+        totalPages: shouldPaginate ? Math.ceil(total / Number(limit)) : 1,
+        data,
+      },
+      "Lead statuses fetched successfully"
+    )
+  );
 });
 
-// ✅ Get single lead status by ID
+// -------------------------------------
+// GET BY ID
+// -------------------------------------
 const getLeadStatusById = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res
       .status(400)
       .json(new apiResponse(400, null, "Invalid lead status ID"));
   }
 
-  const leadStatus = await LeadStatus.findById(id);
+  const data = await LeadStatus.findById(id).populate("action");
 
-  if (!leadStatus) {
+  if (!data) {
     return res
       .status(404)
       .json(new apiResponse(404, null, "Lead status not found"));
@@ -155,13 +169,15 @@ const getLeadStatusById = asyncHandler(async (req, res) => {
 
   res
     .status(200)
-    .json(new apiResponse(200, leadStatus, "Lead status fetched successfully"));
+    .json(new apiResponse(200, data, "Lead status fetched successfully"));
 });
 
-// ✅ Update lead status
+// -------------------------------------
+// UPDATE LEAD STATUS
+// -------------------------------------
 const updateLeadStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { title, status } = req.body;
+  const { title, action } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res
@@ -169,24 +185,26 @@ const updateLeadStatus = asyncHandler(async (req, res) => {
       .json(new apiResponse(400, null, "Invalid lead status ID"));
   }
 
-  const leadStatus = await LeadStatus.findById(id);
-  if (!leadStatus) {
+  const data = await LeadStatus.findById(id);
+  if (!data) {
     return res
       .status(404)
       .json(new apiResponse(404, null, "Lead status not found"));
   }
 
-  if (title) leadStatus.title = title.trim();
-  if (typeof status === "boolean") leadStatus.status = status;
+  if (title) data.title = title.trim();
+  if (action) data.action = action;
 
-  await leadStatus.save();
+  await data.save();
 
   res
     .status(200)
-    .json(new apiResponse(200, leadStatus, "Lead status updated successfully"));
+    .json(new apiResponse(200, data, "Lead status updated successfully"));
 });
 
-// ✅ Delete lead status
+// -------------------------------------
+// DELETE STATUS
+// -------------------------------------
 const deleteLeadStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -196,8 +214,8 @@ const deleteLeadStatus = asyncHandler(async (req, res) => {
       .json(new apiResponse(400, null, "Invalid lead status ID"));
   }
 
-  const leadStatus = await LeadStatus.findById(id);
-  if (!leadStatus) {
+  const data = await LeadStatus.findById(id);
+  if (!data) {
     return res
       .status(404)
       .json(new apiResponse(404, null, "Lead status not found"));
