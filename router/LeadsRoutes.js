@@ -20,7 +20,7 @@ routes.route("/bulkAddLeads").post(verifyJWT, bulkAddLeads);
 routes.route("/getLeadCountByStatus").get(getLeadCountByStatus);
 routes.route("/assignLeads").post(verifyJWT, assignLeads);
 routes.route("/:id").patch(verifyJWT, updateLead);
-routes.route("/updateStatus:id").patch(verifyJWT, updateStatus);
+routes.route("/updateStatus/:id").patch(verifyJWT, updateStatus);
 routes.route("/:id").delete(verifyJWT, deleteLead);
 routes.route("/").get(verifyJWT, getAllLeads);
 routes.route("/:id").get(verifyJWT, getLeadById);
