@@ -26,6 +26,7 @@ const LeadsSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadAction",
     },
+
     status: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadStatus",
@@ -38,15 +39,20 @@ const LeadsSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadStatus",
     },
-
+    siteVisitDate: Date,
+    // NEXT
+    nextAction: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
+    },
     followUpDate: Date,
     followUpTime: String,
-    remark: String,
-    comment: String,
     currentStatus: {
       type: String,
       default: "Fresh",
     },
+    remark: String,
+    comment: String,
 
     assignTo: {
       type: mongoose.Schema.Types.ObjectId,

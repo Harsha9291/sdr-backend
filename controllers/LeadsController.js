@@ -681,4 +681,5 @@ export {
   getLeadById,
   assignLeads,
   getLeadCountByStatus,
+  updateStatus,
 };

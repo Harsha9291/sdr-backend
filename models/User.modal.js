@@ -26,9 +26,12 @@ const UserSchema = new mongoose.Schema(
     gender: {
       type: String,
     },
+    employeeType: {
+      type: String,
+    },
     roll: {
       type: String,
-      enum: ["User", "Employee", "TL", "Admin"],
+      enum: ["User", "Employee", "Admin"],
       default: "User",
       required: true,
     },
@@ -73,7 +76,7 @@ const UserSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true,
+    timestamps: { createdAt: true, updatedAt: true },
   }
 );
 

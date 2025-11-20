@@ -7,7 +7,7 @@ const PlatformSchema = new mongoose.Schema(
       required: true,
     },
     PlatformId: {
-      type: Number, // store as a number
+      type: Number,
       unique: true,
       index: true,
     },
@@ -17,12 +17,10 @@ const PlatformSchema = new mongoose.Schema(
   }
 );
 
-// ⚙️ Auto-increment PlatformId before saving
 PlatformSchema.pre("save", async function (next) {
-  if (this.PlatformId) return next(); // Skip if already set (for updates)
+  if (this.PlatformId) return next();
 
   try {
-    // Get the last platform with the highest PlatformId
     const lastPlatform = await mongoose
       .model("Platform")
       .findOne({}, { PlatformId: 1 })

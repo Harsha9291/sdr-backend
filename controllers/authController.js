@@ -11,8 +11,17 @@ import { sendWhatsappOTP } from "../utils/sendOTP.js";
 const OTP_EXPIRATION_TIME = 5 * 60 * 1000;
 
 const createUser = asyncHandler(async (req, res) => {
-  const { name, phone, roll, email, gender, dob, address, occupation } =
-    req.body;
+  const {
+    name,
+    phone,
+    employeeType,
+    roll,
+    email,
+    gender,
+    dob,
+    address,
+    occupation,
+  } = req.body;
 
   if (!phone) {
     return res
@@ -27,12 +36,6 @@ const createUser = asyncHandler(async (req, res) => {
       .json(
         new apiResponse(400, null, "Phone number must be exactly 10 digits")
       );
-  }
-
-  if (!email) {
-    return res
-      .status(400)
-      .json(new apiResponse(400, null, "Email is required"));
   }
 
   try {
@@ -60,6 +63,7 @@ const createUser = asyncHandler(async (req, res) => {
       email,
       gender,
       dob,
+      employeeType,
       roll,
       address,
       occupation,
@@ -307,18 +311,33 @@ const getAllUsers = asyncHandler(async (req, res) => {
       limit = 10,
       search,
       sortBy = "recent",
+      roll,
+      employeeType,
     } = req.query;
 
     const match = {};
 
+    // -----------------------------
+    // Apply Filters
+    // -----------------------------
+    if (roll) {
+      match.roll = roll; // "User", "Admin", "Employee"
+    }
+
+    if (employeeType) {
+      match.employeeType = employeeType;
+    }
+
     let pipeline = [{ $match: match }];
 
-    // Global text search
+    // -----------------------------
+    // Global Search
+    // -----------------------------
     if (search) {
       const words = search
         .trim()
         .split(/\s+/)
-        .map((word) => new RegExp(word.replace(/’/g, "'"), "i"));
+        .map((w) => new RegExp(w.replace(/’/g, "'"), "i"));
 
       const orConditions = words.flatMap((regex) => [
         { name: { $regex: regex } },
@@ -329,43 +348,56 @@ const getAllUsers = asyncHandler(async (req, res) => {
       pipeline.push({ $match: { $or: orConditions } });
     }
 
-    // Enhanced sort logic
+    // -----------------------------
+    // Sorting
+    // -----------------------------
     if (sortBy === "recent") {
-      pipeline.push({ $sort: { createdAt: -1, _id: -1 } }); // recent entries first
+      pipeline.push({ $sort: { updatedAt: -1, createdAt: -1, _id: -1 } });
     } else if (sortBy === "oldest") {
-      pipeline.push({ $sort: { createdAt: 1, _id: 1 } }); // oldest entries first
+      pipeline.push({ $sort: { createdAt: 1, updatedAt: 1, _id: 1 } });
     } else {
-      pipeline.push({ $sort: { _id: -1 } }); // fallback
+      pipeline.push({ $sort: { _id: -1 } });
     }
 
-    // Count total
+    // -----------------------------
+    // Count Total
+    // -----------------------------
     const totalUsersArr = await User.aggregate([
       ...pipeline,
       { $count: "count" },
     ]);
+
     const total = totalUsersArr[0]?.count || 0;
 
-    // Pagination
+    // -----------------------------
+    // Pagination (Only if true)
+    // -----------------------------
     if (isPagination === "true") {
       pipeline.push({ $skip: (page - 1) * limit }, { $limit: parseInt(limit) });
     }
 
+    // -----------------------------
+    // Final Query
+    // -----------------------------
     const users = await User.aggregate(pipeline);
 
-    res.status(200).json(
+    return res.status(200).json(
       new apiResponse(
         200,
         {
           users,
           totalUsers: total,
-          totalPages: Math.ceil(total / limit),
-          currentPage: Number(page),
+          totalPages: isPagination === "true" ? Math.ceil(total / limit) : 1,
+          currentPage: isPagination === "true" ? Number(page) : 1,
         },
         "Users fetched successfully"
       )
     );
   } catch (error) {
-    res.status(500).json(new apiResponse(500, null, `Error: ${error.message}`));
+    console.log(error);
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
   }
 });
 
