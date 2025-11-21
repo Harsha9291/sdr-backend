@@ -51,13 +51,21 @@ const addLeadHistory = asyncHandler(async (req, res) => {
 });
 
 const getAllLeadHistory = asyncHandler(async (req, res) => {
-  const { leadId, employeeId, actionType, status, startDate, endDate } =
-    req.query;
+  const {
+    leadId,
+    employeeId,
+    actionType,
+    status,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 10,
+  } = req.query;
 
   try {
     const filter = {};
 
-    // ✅ Use mongoose.isValidObjectId() & mongoose.Types.ObjectId() (no 'new')
+    // Filter by IDs
     if (leadId && mongoose.isValidObjectId(leadId)) {
       filter.leadId = mongoose.Types.ObjectId(leadId);
     }
@@ -66,26 +74,47 @@ const getAllLeadHistory = asyncHandler(async (req, res) => {
       filter.employeeId = mongoose.Types.ObjectId(employeeId);
     }
 
+    // String filters
     if (actionType) filter.actionType = actionType;
     if (status) filter.status = status;
 
+    // Date filter
     if (startDate || endDate) {
       filter.createdAt = {};
       if (startDate) filter.createdAt.$gte = new Date(startDate);
       if (endDate) filter.createdAt.$lte = new Date(endDate);
     }
 
+    // Pagination values
+    const pageNumber = parseInt(page) || 1;
+    const limitNumber = parseInt(limit) || 10;
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Total records count
+    const totalRecords = await LeadHistory.countDocuments(filter);
+
+    // Fetch data with pagination
     const histories = await LeadHistory.find(filter)
       .populate("leadId", "name phone email")
       .populate("employeeId", "name email phone")
       .populate("performedBy", "name email phone")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNumber);
 
-    return res
-      .status(200)
-      .json(
-        new apiResponse(200, histories, "Lead history fetched successfully")
-      );
+    return res.status(200).json(
+      new apiResponse(
+        200,
+        {
+          data: histories,
+          page: pageNumber,
+          limit: limitNumber,
+          totalRecords,
+          totalPages: Math.ceil(totalRecords / limitNumber),
+        },
+        "Lead history fetched successfully"
+      )
+    );
   } catch (error) {
     console.error("Error fetching lead history:", error);
     return res
