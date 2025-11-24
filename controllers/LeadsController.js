@@ -298,6 +298,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
     action,
     platformId,
     currentStatus,
+    assigned = "all", // NEW FILTER
   } = req.query;
 
   const pipeline = [];
@@ -340,11 +341,13 @@ const getAllLeads = asyncHandler(async (req, res) => {
       $match: { assignTo: new mongoose.Types.ObjectId(assignTo) },
     });
   }
+
   if (status && mongoose.Types.ObjectId.isValid(status)) {
     pipeline.push({
       $match: { status: new mongoose.Types.ObjectId(status) },
     });
   }
+
   if (action && mongoose.Types.ObjectId.isValid(action)) {
     pipeline.push({
       $match: { action: new mongoose.Types.ObjectId(action) },
@@ -362,6 +365,14 @@ const getAllLeads = asyncHandler(async (req, res) => {
       $match: { currentStatus },
     });
   }
+
+  // 🟦 NEW FILTER → Assigned / Unassigned Leads
+  if (assigned === "yes") {
+    pipeline.push({ $match: { assignTo: { $ne: null } } });
+  } else if (assigned === "no") {
+    pipeline.push({ $match: { assignTo: null } });
+  }
+  // If "all" → no filter applied
 
   // 🔽 Sorting
   if (sortBy === "recent") pipeline.push({ $sort: { createdAt: -1 } });
@@ -442,6 +453,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
     $unwind: { path: "$prevStatus", preserveNullAndEmptyArrays: true },
   });
 
+  // PLATFORM LOOKUP
   pipeline.push({
     $lookup: {
       from: "platforms",
@@ -672,6 +684,69 @@ const getLeadCountByStatus = asyncHandler(async (req, res) => {
   }
 });
 
+const transferSingleLead = asyncHandler(async (req, res) => {
+  const { leadId } = req.params;
+  const { userId, reason } = req.body;
+
+  // Validation
+  if (!leadId) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "leadId is required"));
+  }
+
+  if (!userId) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "userId is required"));
+  }
+
+  try {
+    // 1️⃣ Find Lead
+    const lead = await Leads.findById(leadId);
+
+    if (!lead) {
+      return res.status(404).json(new apiResponse(404, null, "Lead not found"));
+    }
+
+    const previousAssign = lead.assignTo || null;
+
+    // 2️⃣ Update assignTo field
+    lead.assignTo = userId;
+    await lead.save();
+
+    // 3️⃣ Create LeadHistory Log
+    await LeadHistory.create({
+      leadId: lead._id,
+      employeeId: userId,
+      actionType: "Lead Transferred",
+      previousStatus: null,
+      status: "Transferred",
+      comment: reason || "Transferred to another user",
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+      previousAssignTo: previousAssign,
+      newAssignTo: userId,
+    });
+
+    return res.status(200).json(
+      new apiResponse(
+        200,
+        {
+          leadId: lead._id,
+          oldAssign: previousAssign,
+          newAssign: userId,
+        },
+        "Lead transferred successfully"
+      )
+    );
+  } catch (error) {
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Transfer error: ${error.message}`));
+  }
+});
+
 export {
   addLead,
   bulkAddLeads,
@@ -682,4 +757,5 @@ export {
   assignLeads,
   getLeadCountByStatus,
   updateStatus,
+  transferSingleLead,
 };

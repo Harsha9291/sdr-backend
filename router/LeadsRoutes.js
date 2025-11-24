@@ -10,6 +10,7 @@ import {
   assignLeads,
   getLeadCountByStatus,
   updateStatus,
+  transferSingleLead,
 } from "../controllers/LeadsController.js";
 import { verifyJWT } from "../middlewares/authTypeMiddleware.js";
 
@@ -24,5 +25,6 @@ routes.route("/updateStatus/:id").patch(verifyJWT, updateStatus);
 routes.route("/:id").delete(verifyJWT, deleteLead);
 routes.route("/").get(verifyJWT, getAllLeads);
 routes.route("/:id").get(verifyJWT, getLeadById);
+routes.route("/transfer/:leadId").post(verifyJWT, transferSingleLead);
 
 export default routes;
