@@ -167,7 +167,7 @@ const LeadsSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
 );
 
 // For SINGLE insert (save)

@@ -33,7 +33,7 @@ const addLead = asyncHandler(async (req, res) => {
       return res
         .status(400)
         .json(
-          new apiResponse(400, null, "Lead with this phone already exists")
+          new apiResponse(400, null, "Lead with this phone already exists"),
         );
     }
 
@@ -70,7 +70,7 @@ const addLead = asyncHandler(async (req, res) => {
     res
       .status(500)
       .json(
-        new apiResponse(500, null, `Error creating lead: ${error.message}`)
+        new apiResponse(500, null, `Error creating lead: ${error.message}`),
       );
   }
 });
@@ -93,8 +93,8 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
         index ===
         self.findIndex(
           (t) =>
-            t.phone?.trim().toLowerCase() === item.phone?.trim().toLowerCase()
-        )
+            t.phone?.trim().toLowerCase() === item.phone?.trim().toLowerCase(),
+        ),
     );
 
     const existingLeads = await Leads.find({
@@ -104,7 +104,7 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
     const existingPhones = existingLeads.map((l) => l.phone);
 
     const newLeads = uniqueLeads.filter(
-      (l) => !existingPhones.includes(l.phone)
+      (l) => !existingPhones.includes(l.phone),
     );
 
     let insertedLeads = [];
@@ -172,8 +172,8 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
           skippedDuplicates: existingPhones.length,
           duplicateLogged: existingPhones.length,
         },
-        `${insertedLeads.length} new leads inserted successfully, ${existingPhones.length} duplicates logged`
-      )
+        `${insertedLeads.length} new leads inserted successfully, ${existingPhones.length} duplicates logged`,
+      ),
     );
   } catch (error) {
     res
@@ -207,7 +207,7 @@ const updateLead = asyncHandler(async (req, res) => {
     res
       .status(500)
       .json(
-        new apiResponse(500, null, `Error updating lead: ${error.message}`)
+        new apiResponse(500, null, `Error updating lead: ${error.message}`),
       );
   }
 });
@@ -249,7 +249,7 @@ const updateStatus = asyncHandler(async (req, res) => {
     res
       .status(500)
       .json(
-        new apiResponse(500, null, `Error updating lead: ${error.message}`)
+        new apiResponse(500, null, `Error updating lead: ${error.message}`),
       );
   }
 });
@@ -275,7 +275,7 @@ const deleteLead = asyncHandler(async (req, res) => {
     res
       .status(500)
       .json(
-        new apiResponse(500, null, `Error deleting lead: ${error.message}`)
+        new apiResponse(500, null, `Error deleting lead: ${error.message}`),
       );
   }
 });
@@ -360,9 +360,18 @@ const getAllLeads = asyncHandler(async (req, res) => {
     });
   }
 
+  // if (currentStatus) {
+  //   pipeline.push({
+  //     $match: { currentStatus },
+  //   });
   if (currentStatus) {
     pipeline.push({
-      $match: { currentStatus },
+      $match: {
+        currentStatus: {
+          $regex: currentStatus,
+          $options: "i",
+        },
+      },
     });
   }
 
@@ -507,8 +516,8 @@ const getAllLeads = asyncHandler(async (req, res) => {
         totalPages: Math.ceil(total / limit),
         currentPage: Number(page),
       },
-      "Leads fetched successfully"
-    )
+      "Leads fetched successfully",
+    ),
   );
 });
 
@@ -558,7 +567,7 @@ const assignLeads = asyncHandler(async (req, res) => {
 
     const updatedLeads = await Leads.updateMany(
       { _id: { $in: leadIds } },
-      { $set: { assignTo: employeeId } }
+      { $set: { assignTo: employeeId } },
     );
 
     return res
@@ -567,8 +576,8 @@ const assignLeads = asyncHandler(async (req, res) => {
         new apiResponse(
           200,
           updatedLeads,
-          `Leads assigned manually to employee ${employeeId} successfully`
-        )
+          `Leads assigned manually to employee ${employeeId} successfully`,
+        ),
       );
   }
 
@@ -600,8 +609,8 @@ const assignLeads = asyncHandler(async (req, res) => {
         new apiResponse(
           200,
           result,
-          `Leads assigned automatically (round-robin) to selected employees`
-        )
+          `Leads assigned automatically (round-robin) to selected employees`,
+        ),
       );
   }
 });
@@ -641,8 +650,8 @@ const getLeadCountByStatus1 = asyncHandler(async (req, res) => {
         new apiResponse(
           200,
           result,
-          "Leads count by status fetched successfully"
-        )
+          "Leads count by status fetched successfully",
+        ),
       );
   } catch (error) {
     res.status(500).json(new apiResponse(500, null, error.message));
@@ -676,8 +685,8 @@ const getLeadCountByStatus = asyncHandler(async (req, res) => {
         new apiResponse(
           200,
           result,
-          "Lead count by currentStatus fetched successfully"
-        )
+          "Lead count by currentStatus fetched successfully",
+        ),
       );
   } catch (error) {
     res.status(500).json(new apiResponse(500, null, error.message));
@@ -737,13 +746,64 @@ const transferSingleLead = asyncHandler(async (req, res) => {
           oldAssign: previousAssign,
           newAssign: userId,
         },
-        "Lead transferred successfully"
-      )
+        "Lead transferred successfully",
+      ),
     );
   } catch (error) {
     return res
       .status(500)
       .json(new apiResponse(500, null, `Transfer error: ${error.message}`));
+  }
+});
+
+const getDashboardStats = asyncHandler(async (req, res) => {
+  try {
+    const stats = await Leads.aggregate([
+      {
+        $group: {
+          _id: "$currentStatus",
+          total: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalLeads = await Leads.countDocuments();
+
+    const formatted = {
+      TotalLead: totalLeads,
+      TotalFreshLead: 0,
+      TotalResentLead: 0,
+      ScheduledTotal: 0,
+      PendingTotal: 0,
+      TotalSitevisit: 0,
+      TotalQualified: 0,
+      TotalOpen: 0,
+      TotalScraped: 0,
+    };
+
+    stats.forEach((item) => {
+      const status = (item._id || "").toLowerCase();
+
+      if (status.includes("fresh")) formatted.TotalFreshLead = item.total;
+      else if (status.includes("follow")) formatted.ScheduledTotal = item.total;
+      else if (status.includes("pending")) formatted.PendingTotal = item.total;
+      else if (status.includes("meeting"))
+        formatted.TotalSitevisit = item.total;
+      else if (status.includes("qualified"))
+        formatted.TotalQualified = item.total;
+      else if (status.includes("open")) formatted.TotalOpen = item.total;
+      else if (status.includes("scraped")) formatted.TotalScraped = item.total;
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: formatted,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 });
 
@@ -758,4 +818,5 @@ export {
   getLeadCountByStatus,
   updateStatus,
   transferSingleLead,
+  getDashboardStats,
 };

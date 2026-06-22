@@ -1,4 +1,3 @@
-// routes/leadRoutes.js
 import { Router } from "express";
 import {
   addLead,
@@ -11,20 +10,47 @@ import {
   getLeadCountByStatus,
   updateStatus,
   transferSingleLead,
+  getDashboardStats,
 } from "../controllers/LeadsController.js";
+
 import { verifyJWT } from "../middlewares/authTypeMiddleware.js";
 
 const routes = Router();
 
-routes.route("/").post(verifyJWT, addLead);
+/* ==========================
+   LEADS
+========================== */
+
+routes.route("/").post(verifyJWT, addLead).get(verifyJWT, getAllLeads);
+
 routes.route("/bulkAddLeads").post(verifyJWT, bulkAddLeads);
-routes.route("/getLeadCountByStatus").get(getLeadCountByStatus);
+
 routes.route("/assignLeads").post(verifyJWT, assignLeads);
-routes.route("/:id").patch(verifyJWT, updateLead);
-routes.route("/updateStatus/:id").patch(verifyJWT, updateStatus);
-routes.route("/:id").delete(verifyJWT, deleteLead);
-routes.route("/").get(verifyJWT, getAllLeads);
-routes.route("/:id").get(verifyJWT, getLeadById);
+
+/* ==========================
+   DASHBOARD / STATS
+========================== */
+
+routes.route("/dashboard-stats").get(verifyJWT, getDashboardStats);
+
+routes.route("/getLeadCountByStatus").get(verifyJWT, getLeadCountByStatus);
+
+/* ==========================
+   LEAD ACTIONS
+========================== */
+
 routes.route("/transfer/:leadId").post(verifyJWT, transferSingleLead);
+
+routes.route("/updateStatus/:id").patch(verifyJWT, updateStatus);
+
+/* ==========================
+   LEAD BY ID
+========================== */
+
+routes
+  .route("/:id")
+  .get(verifyJWT, getLeadById)
+  .patch(verifyJWT, updateLead)
+  .delete(verifyJWT, deleteLead);
 
 export default routes;
