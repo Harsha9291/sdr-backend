@@ -43,8 +43,8 @@ const bulkAddLeadRates = asyncHandler(async (req, res) => {
       i ===
       arr.findIndex(
         (v) =>
-          v.title?.trim().toLowerCase() === item.title?.trim().toLowerCase()
-      )
+          v.title?.trim().toLowerCase() === item.title?.trim().toLowerCase(),
+      ),
   );
 
   // Existing titles in DB
@@ -53,7 +53,7 @@ const bulkAddLeadRates = asyncHandler(async (req, res) => {
   }).distinct("title");
 
   const toInsert = unique.filter(
-    (s) => !existingTitles.includes(s.title.trim())
+    (s) => !existingTitles.includes(s.title.trim()),
   );
 
   if (toInsert.length === 0) {
@@ -67,7 +67,7 @@ const bulkAddLeadRates = asyncHandler(async (req, res) => {
       title: s.title.trim(),
       actionStatus: s.actionStatus || null,
     })),
-    { ordered: false }
+    { ordered: false },
   );
 
   res
@@ -76,8 +76,8 @@ const bulkAddLeadRates = asyncHandler(async (req, res) => {
       new apiResponse(
         201,
         { totalReceived: rates.length, insertedCount: inserted.length },
-        `${inserted.length} new lead rates added successfully`
-      )
+        `${inserted.length} new lead rates added successfully`,
+      ),
     );
 });
 
@@ -133,8 +133,8 @@ const getAllLeadRates = asyncHandler(async (req, res) => {
         totalPages: shouldPaginate ? Math.ceil(total / Number(limit)) : 1,
         data,
       },
-      "Lead rates fetched successfully"
-    )
+      "Lead rates fetched successfully",
+    ),
   );
 });
 

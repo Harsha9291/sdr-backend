@@ -194,33 +194,7 @@ const updateLead = asyncHandler(async (req, res) => {
       return res.status(404).json(new apiResponse(404, null, "Lead not found"));
     }
 
-    Object.keys(req.body).forEach((key) => {
-      lead[key] = req.body[key];
-    });
-
-    await lead.save();
-
-    res
-      .status(200)
-      .json(new apiResponse(200, lead, "Lead updated successfully and logged"));
-  } catch (error) {
-    res
-      .status(500)
-      .json(
-        new apiResponse(500, null, `Error updating lead: ${error.message}`),
-      );
-  }
-});
-
-const updateStatus = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const lead = await Leads.findById(id);
-
-    if (!lead) {
-      return res.status(404).json(new apiResponse(404, null, "Lead not found"));
-    }
-
+    // Track previous values for history
     const previousStatus = lead.status;
     const previousAction = lead.action;
 
@@ -230,10 +204,12 @@ const updateStatus = asyncHandler(async (req, res) => {
 
     await lead.save();
 
+    // Log the update in history
     const historyData = {
       leadId: lead._id,
       employeeId: lead.assignTo || null,
       actionType: req.body.actionType || "Lead Updated",
+      previousStatus: previousStatus || null,
       status: lead.status,
       comment: req.body.comment || null,
       performedBy: req.user?._id || null,
@@ -255,6 +231,55 @@ const updateStatus = asyncHandler(async (req, res) => {
 });
 
 /* ======================================================
+   🟢 Update Status (Separate endpoint for status updates)
+====================================================== */
+const updateStatus = asyncHandler(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const lead = await Leads.findById(id);
+
+    if (!lead) {
+      return res.status(404).json(new apiResponse(404, null, "Lead not found"));
+    }
+
+    const previousStatus = lead.status;
+    const previousAction = lead.action;
+
+    // Only update provided fields
+    if (req.body.status) lead.status = req.body.status;
+    if (req.body.action) lead.action = req.body.action;
+    if (req.body.currentStatus) lead.currentStatus = req.body.currentStatus;
+
+    await lead.save();
+
+    const historyData = {
+      leadId: lead._id,
+      employeeId: lead.assignTo || null,
+      actionType: req.body.actionType || "Status Updated",
+      previousStatus: previousStatus || null,
+      status: lead.status,
+      comment: req.body.comment || null,
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+    };
+
+    await LeadHistory.create(historyData);
+
+    res
+      .status(200)
+      .json(
+        new apiResponse(200, lead, "Status updated successfully and logged"),
+      );
+  } catch (error) {
+    res
+      .status(500)
+      .json(
+        new apiResponse(500, null, `Error updating status: ${error.message}`),
+      );
+  }
+});
+
+/* ======================================================
    🟢 Delete Lead
 ====================================================== */
 const deleteLead = asyncHandler(async (req, res) => {
@@ -265,6 +290,18 @@ const deleteLead = asyncHandler(async (req, res) => {
     if (!lead) {
       return res.status(404).json(new apiResponse(404, null, "Lead not found"));
     }
+
+    // Log deletion in history before deleting
+    await LeadHistory.create({
+      leadId: lead._id,
+      employeeId: lead.assignTo || null,
+      actionType: "Lead Deleted",
+      previousStatus: lead.status,
+      status: "Deleted",
+      comment: "Lead was deleted from system",
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+    });
 
     await Leads.findByIdAndDelete(id);
 
@@ -283,7 +320,6 @@ const deleteLead = asyncHandler(async (req, res) => {
 /* ======================================================
    🟢 Get All Leads (with populated refs)
 ====================================================== */
-
 const getAllLeads = asyncHandler(async (req, res) => {
   const {
     isPagination = "true",
@@ -298,7 +334,7 @@ const getAllLeads = asyncHandler(async (req, res) => {
     action,
     platformId,
     currentStatus,
-    assigned = "all", // NEW FILTER
+    assigned = "all",
   } = req.query;
 
   const pipeline = [];
@@ -360,10 +396,6 @@ const getAllLeads = asyncHandler(async (req, res) => {
     });
   }
 
-  // if (currentStatus) {
-  //   pipeline.push({
-  //     $match: { currentStatus },
-  //   });
   if (currentStatus) {
     pipeline.push({
       $match: {
@@ -375,17 +407,19 @@ const getAllLeads = asyncHandler(async (req, res) => {
     });
   }
 
-  // 🟦 NEW FILTER → Assigned / Unassigned Leads
+  // 🟦 Assigned / Unassigned Leads filter
   if (assigned === "yes") {
     pipeline.push({ $match: { assignTo: { $ne: null } } });
   } else if (assigned === "no") {
     pipeline.push({ $match: { assignTo: null } });
   }
-  // If "all" → no filter applied
 
   // 🔽 Sorting
-  if (sortBy === "recent") pipeline.push({ $sort: { createdAt: -1 } });
-  else if (sortBy === "oldest") pipeline.push({ $sort: { createdAt: 1 } });
+  if (sortBy === "recent") {
+    pipeline.push({ $sort: { createdAt: -1 } });
+  } else if (sortBy === "oldest") {
+    pipeline.push({ $sort: { createdAt: 1 } });
+  }
 
   // ==========================================
   // 🟦 POPULATE assignTo (User)
@@ -497,7 +531,9 @@ const getAllLeads = asyncHandler(async (req, res) => {
   });
 
   // 📊 Total Count
-  const totalData = await Leads.aggregate([...pipeline, { $count: "count" }]);
+  const countPipeline = [...pipeline];
+  countPipeline.push({ $count: "count" });
+  const totalData = await Leads.aggregate(countPipeline);
   const total = totalData[0]?.count || 0;
 
   // 📄 Pagination
@@ -534,8 +570,9 @@ const getLeadById = asyncHandler(async (req, res) => {
     .populate("prevAction", "title")
     .populate("prevStatus", "title");
 
-  if (!lead)
+  if (!lead) {
     return res.status(404).json(new apiResponse(404, null, "Lead not found"));
+  }
 
   res.status(200).json(new apiResponse(200, lead, "Lead fetched successfully"));
 });
@@ -570,13 +607,26 @@ const assignLeads = asyncHandler(async (req, res) => {
       { $set: { assignTo: employeeId } },
     );
 
+    // Log assignment in history
+    const historyLogs = leadIds.map((leadId) => ({
+      leadId: leadId,
+      employeeId: employeeId,
+      actionType: "Lead Assigned Manually",
+      status: "Assigned",
+      comment: `Assigned to employee ${employeeId}`,
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+    }));
+
+    await LeadHistory.insertMany(historyLogs);
+
     return res
       .status(200)
       .json(
         new apiResponse(
           200,
           updatedLeads,
-          `Leads assigned manually to employee ${employeeId} successfully`,
+          `Leads assigned manually to employee successfully`,
         ),
       );
   }
@@ -603,6 +653,19 @@ const assignLeads = asyncHandler(async (req, res) => {
 
     const result = await Leads.bulkWrite(updates);
 
+    // Log auto assignment in history
+    const historyLogs = leadIds.map((leadId, index) => ({
+      leadId: leadId,
+      employeeId: employeeIds[index % employeeIds.length],
+      actionType: "Lead Assigned Auto",
+      status: "Assigned",
+      comment: "Auto-assigned via round-robin",
+      performedBy: req.user?._id || null,
+      performedAt: new Date(),
+    }));
+
+    await LeadHistory.insertMany(historyLogs);
+
     return res
       .status(200)
       .json(
@@ -615,7 +678,10 @@ const assignLeads = asyncHandler(async (req, res) => {
   }
 });
 
-const getLeadCountByStatus1 = asyncHandler(async (req, res) => {
+/* ======================================================
+   🟢 Get Lead Count by Status (with populated status)
+====================================================== */
+const getLeadCountByStatus = asyncHandler(async (req, res) => {
   try {
     const result = await Leads.aggregate([
       {
@@ -658,7 +724,10 @@ const getLeadCountByStatus1 = asyncHandler(async (req, res) => {
   }
 });
 
-const getLeadCountByStatus = asyncHandler(async (req, res) => {
+/* ======================================================
+   🟢 Get Lead Count by Current Status
+====================================================== */
+const getLeadCountByCurrentStatus = asyncHandler(async (req, res) => {
   try {
     const result = await Leads.aggregate([
       {
@@ -693,11 +762,13 @@ const getLeadCountByStatus = asyncHandler(async (req, res) => {
   }
 });
 
+/* ======================================================
+   🟢 Transfer Single Lead
+====================================================== */
 const transferSingleLead = asyncHandler(async (req, res) => {
   const { leadId } = req.params;
   const { userId, reason } = req.body;
 
-  // Validation
   if (!leadId) {
     return res
       .status(400)
@@ -711,7 +782,6 @@ const transferSingleLead = asyncHandler(async (req, res) => {
   }
 
   try {
-    // 1️⃣ Find Lead
     const lead = await Leads.findById(leadId);
 
     if (!lead) {
@@ -720,16 +790,14 @@ const transferSingleLead = asyncHandler(async (req, res) => {
 
     const previousAssign = lead.assignTo || null;
 
-    // 2️⃣ Update assignTo field
     lead.assignTo = userId;
     await lead.save();
 
-    // 3️⃣ Create LeadHistory Log
     await LeadHistory.create({
       leadId: lead._id,
       employeeId: userId,
       actionType: "Lead Transferred",
-      previousStatus: null,
+      previousStatus: lead.status || null,
       status: "Transferred",
       comment: reason || "Transferred to another user",
       performedBy: req.user?._id || null,
@@ -756,23 +824,42 @@ const transferSingleLead = asyncHandler(async (req, res) => {
   }
 });
 
+/* ======================================================
+   🟢 Get Dashboard Stats
+====================================================== */
 const getDashboardStats = asyncHandler(async (req, res) => {
   try {
-    const stats = await Leads.aggregate([
-      {
-        $group: {
-          _id: "$currentStatus",
-          total: { $sum: 1 },
-        },
-      },
-    ]);
+    const matchStage = {};
 
-    const totalLeads = await Leads.countDocuments();
+    // Telecaller => only own leads
+    if (req.user?.roll === "Telecaller") {
+      matchStage.assignTo = new mongoose.Types.ObjectId(req.user._id);
+    }
+
+    // Last 10 minutes leads
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+    const [stats, totalLeads, recentLeads] = await Promise.all([
+      Leads.aggregate([
+        { $match: matchStage },
+        {
+          $group: {
+            _id: "$currentStatus",
+            total: { $sum: 1 },
+          },
+        },
+      ]),
+      Leads.countDocuments(matchStage),
+      Leads.countDocuments({
+        ...matchStage,
+        createdAt: { $gte: tenMinutesAgo },
+      }),
+    ]);
 
     const formatted = {
       TotalLead: totalLeads,
       TotalFreshLead: 0,
-      TotalResentLead: 0,
+      TotalResentLead: recentLeads,
       ScheduledTotal: 0,
       PendingTotal: 0,
       TotalSitevisit: 0,
@@ -782,17 +869,40 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     };
 
     stats.forEach((item) => {
-      const status = (item._id || "").toLowerCase();
+      const status = String(item._id || "")
+        .trim()
+        .toLowerCase();
 
-      if (status.includes("fresh")) formatted.TotalFreshLead = item.total;
-      else if (status.includes("follow")) formatted.ScheduledTotal = item.total;
-      else if (status.includes("pending")) formatted.PendingTotal = item.total;
-      else if (status.includes("meeting"))
-        formatted.TotalSitevisit = item.total;
-      else if (status.includes("qualified"))
-        formatted.TotalQualified = item.total;
-      else if (status.includes("open")) formatted.TotalOpen = item.total;
-      else if (status.includes("scraped")) formatted.TotalScraped = item.total;
+      switch (status) {
+        case "fresh":
+          formatted.TotalFreshLead += item.total;
+          break;
+        case "followup":
+        case "follow up":
+        case "follow-up":
+          formatted.ScheduledTotal += item.total;
+          break;
+        case "pending":
+          formatted.PendingTotal += item.total;
+          break;
+        case "meeting":
+        case "meeting sch":
+        case "meeting sch.":
+        case "site visit":
+          formatted.TotalSitevisit += item.total;
+          break;
+        case "qualified":
+          formatted.TotalQualified += item.total;
+          break;
+        case "open":
+          formatted.TotalOpen += item.total;
+          break;
+        case "scraped":
+          formatted.TotalScraped += item.total;
+          break;
+        default:
+          break;
+      }
     });
 
     return res.status(200).json({
@@ -800,6 +910,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
       data: formatted,
     });
   } catch (error) {
+    console.error("❌ Dashboard Stats Error:", error);
     return res.status(500).json({
       success: false,
       message: error.message,
@@ -816,6 +927,7 @@ export {
   getLeadById,
   assignLeads,
   getLeadCountByStatus,
+  getLeadCountByCurrentStatus,
   updateStatus,
   transferSingleLead,
   getDashboardStats,

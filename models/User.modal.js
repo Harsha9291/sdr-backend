@@ -29,10 +29,16 @@ const UserSchema = new mongoose.Schema(
     employeeType: {
       type: String,
     },
+    // roll: {
+    //   type: String,
+    //   enum: ["User", "Employee", "Admin"],
+    //   default: "User",
+    //   required: true,
+    // },
     roll: {
       type: String,
-      enum: ["User", "Employee", "Admin"],
-      default: "User",
+      enum: ["Admin", "Manager", "Telecaller", "Employee"],
+      default: "Telecaller",
       required: true,
     },
 
@@ -77,7 +83,7 @@ const UserSchema = new mongoose.Schema(
   },
   {
     timestamps: { createdAt: true, updatedAt: true },
-  }
+  },
 );
 
 UserSchema.methods.matchPassword = async function (password) {
@@ -87,7 +93,7 @@ UserSchema.methods.matchPassword = async function (password) {
 UserSchema.methods.generateAuthToken = function () {
   const token = jwt.sign(
     { userId: this._id, accountType: this.accountType },
-    process.env.JWT_SECRET
+    process.env.JWT_SECRET,
   );
   return token;
 };

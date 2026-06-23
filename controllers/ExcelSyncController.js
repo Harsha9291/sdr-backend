@@ -27,7 +27,6 @@ let isSyncing = false;
  */
 const syncLeadsFromExcel = async (req = null, res = null) => {
   try {
-  
     // Prevent concurrent syncs
     if (isSyncing) {
       console.log("⏳ Sync already in progress...");
@@ -58,11 +57,9 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
     const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
     const excelData = XLSX.utils.sheet_to_json(firstSheet);
 
-    console.log(`📊 Found ${excelData.length} records in Excel`);
 
     if (!excelData || excelData.length === 0) {
       isSyncing = false;
-      console.log("⚠️ Excel file is empty");
       if (res) {
         return res
           .status(200)
@@ -77,9 +74,7 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
     const currentHash = JSON.stringify(excelData).length;
     const force = req?.query?.force === "true";
 
-    console.log(`🔑 Current hash: ${currentHash}`);
-    console.log(`🔑 Last hash: ${lastSyncHash}`);
-    console.log(`🔄 Force mode: ${force}`);
+
 
     if (lastSyncHash === currentHash && !force) {
       isSyncing = false;
@@ -111,11 +106,7 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
 
     // Show sample data
     if (excelData.length > 0) {
-      console.log(
-        "📋 Sample row from Excel:",
-        JSON.stringify(excelData[0], null, 2),
-      );
-      console.log("📋 Sample row keys:", Object.keys(excelData[0]));
+
     }
 
     for (const [index, row] of excelData.entries()) {
@@ -127,10 +118,8 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
         row["Contact"] ||
         "";
 
-      console.log(`🔍 Processing row ${index + 1}: Phone = ${phone}`);
 
       if (!phone) {
-        console.log(`⚠️ Row ${index + 1} skipped: No phone number`);
         continue;
       }
 
@@ -140,7 +129,6 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
       });
 
       if (existingLead) {
-        console.log(`⚠️ Row ${index + 1}: Duplicate phone ${phone}`);
         duplicatePhones.push(phone);
         continue;
       }
@@ -190,36 +178,22 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
 
         leadDate: new Date(),
       };
-      console.log(
-        `✅ Row ${index + 1}: Valid lead - ${leadData.name} (${leadData.phone})`,
-      );
+  
       leadsToInsert.push(leadData);
     }
 
-    console.log(`✅ ${leadsToInsert.length} new leads to insert`);
-    console.log(`⚠️ ${duplicatePhones.length} duplicates skipped`);
+
 
     // ========== 5️⃣ BULK INSERT ==========
     let insertedLeads = [];
     if (leadsToInsert.length > 0) {
-      console.log("📦 Starting bulk insert...");
-
-      // Show first lead data for validation
-      console.log(
-        "🔍 First lead to insert:",
-        JSON.stringify(leadsToInsert[0], null, 2),
-      );
 
       try {
         for (let i = 0; i < leadsToInsert.length; i += BATCH_SIZE) {
           const batch = leadsToInsert.slice(i, i + BATCH_SIZE);
-          console.log(
-            `📦 Inserting batch ${Math.floor(i / BATCH_SIZE) + 1} with ${batch.length} leads`,
-          );
-
+      
           try {
             const inserted = await Leads.insertMany(batch, { ordered: false });
-            console.log(`✅ Batch inserted: ${inserted.length} documents`);
             insertedLeads.push(...inserted);
           } catch (batchError) {
             console.error(
@@ -261,10 +235,7 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
       }
     }
 
-    console.log(
-      `✅ Total inserted in this sync: ${insertedLeads.length} leads`,
-    );
-
+  
     // ========== 6️⃣ CREATE HISTORY LOGS ==========
     if (insertedLeads.length > 0) {
       console.log(`📝 Creating ${insertedLeads.length} history logs...`);
@@ -292,7 +263,6 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
     // ========== 7️⃣ UPDATE LAST SYNC ==========
     lastSyncHash = currentHash;
     isSyncing = false;
-    console.log(`✅ Last sync hash updated to: ${currentHash}`);
 
     // ========== 8️⃣ RESPONSE ==========
     const responseData = {
@@ -306,8 +276,6 @@ const syncLeadsFromExcel = async (req = null, res = null) => {
       })),
     };
 
-    console.log(`✅ Sync complete! ${insertedLeads.length} new leads added`);
-    console.log("═══════════════════════════════════════════════════");
 
     if (res) {
       return res
@@ -351,7 +319,6 @@ const getSyncStatus = asyncHandler(async (req, res) => {
     createdAt: { $gte: today },
   });
 
-  console.log(`📊 Total leads: ${totalLeads}, Today: ${todayLeads}`);
 
   res.status(200).json(
     new apiResponse(
