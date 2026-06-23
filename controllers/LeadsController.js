@@ -832,7 +832,7 @@ const getDashboardStats = asyncHandler(async (req, res) => {
     const matchStage = {};
 
     // Telecaller => only own leads
-    if (req.user?.roll === "Telecaller") {
+    if (req.user?.role === "Telecaller") {
       matchStage.assignTo = new mongoose.Types.ObjectId(req.user._id);
     }
 
