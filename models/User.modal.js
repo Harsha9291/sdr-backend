@@ -1,6 +1,3 @@
-
-
-
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
 
@@ -36,11 +33,8 @@ const UserSchema = new mongoose.Schema(
       default: "Telecaller",
       required: true,
     },
-
-
     dob: Date,
     age: Number,
-
     email: {
       type: String,
       trim: true,

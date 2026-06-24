@@ -7,7 +7,7 @@ import mongoose from "mongoose";
 // ADD SINGLE LEAD STATUS
 // -------------------------------------
 const addLeadStatus = asyncHandler(async (req, res) => {
-  const { title, action } = req.body;
+  const { title, leadActionResult } = req.body;
 
   if (!title) {
     return res
@@ -25,7 +25,7 @@ const addLeadStatus = asyncHandler(async (req, res) => {
 
   const newStatus = await LeadStatus.create({
     title: title.trim(),
-    action: action || null,
+    leadActionResult: leadActionResult || null,
   });
 
   res
@@ -73,7 +73,7 @@ const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
   const inserted = await LeadStatus.insertMany(
     toInsert.map((s) => ({
       title: s.title.trim(),
-      action: s.action || null,
+      leadActionResult: s.leadActionResult  || null,
     })),
     { ordered: false }
   );
@@ -112,7 +112,7 @@ const getAllLeadStatuses = asyncHandler(async (req, res) => {
 
   // Action filter
   if (action && mongoose.Types.ObjectId.isValid(action)) {
-    query.action = action;
+    query.leadActionResult = action;
   }
 
   let q = LeadStatus.find(query);
@@ -131,7 +131,7 @@ const getAllLeadStatuses = asyncHandler(async (req, res) => {
     q = q.skip(skip).limit(Number(limit));
   }
 
-  const data = await q.populate("action");
+  const data = await q.populate("leadActionResult", "title");
 
   return res.status(200).json(
     new apiResponse(
@@ -159,7 +159,7 @@ const getLeadStatusById = asyncHandler(async (req, res) => {
       .json(new apiResponse(400, null, "Invalid lead status ID"));
   }
 
-  const data = await LeadStatus.findById(id).populate("action");
+  const data = await LeadStatus.findById(id).populate("leadActionResult", "title");
 
   if (!data) {
     return res
@@ -177,7 +177,7 @@ const getLeadStatusById = asyncHandler(async (req, res) => {
 // -------------------------------------
 const updateLeadStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { title, action } = req.body;
+  const { title, leadActionResult } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res
@@ -193,7 +193,7 @@ const updateLeadStatus = asyncHandler(async (req, res) => {
   }
 
   if (title) data.title = title.trim();
-  if (action) data.action = action;
+  if (leadActionResult) data.leadActionResult = leadActionResult;
 
   await data.save();
 
