@@ -5,80 +5,80 @@ import { asyncHandler } from "../utils/asynchandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
 
 const addLeadActionResult = asyncHandler(async (req, res) => {
-  try {
-    const { LeadAction, title } = req.body;
+  const { leadAction, title } = req.body;
 
-    if (!LeadAction || !title) {
-      return res
-        .status(400)
-        .json(
-          new apiResponse(
-            400,
-            null,
-            "LeadAction and title are required"
-          )
-        );
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(LeadAction)) {
-      return res
-        .status(400)
-        .json(new apiResponse(400, null, "Invalid LeadAction ID"));
-    }
-
-    const leadActionExists = await LeadAction.findById(LeadAction);
-
-    if (!leadActionExists) {
-      return res
-        .status(404)
-        .json(new apiResponse(404, null, "LeadAction not found"));
-    }
-
-    const result = await LeadActionResult.create({
-      LeadAction,
-      title: title.trim(),
-    });
-
-    const populatedResult = await LeadActionResult.findById(
-      result._id
-    ).populate("LeadAction");
-
-    res
-      .status(201)
-      .json(
-        new apiResponse(
-          201,
-          populatedResult,
-          "Lead Action Result created successfully"
-        )
-      );
-  } catch (error) {
-    res
-      .status(500)
-      .json(
-        new apiResponse(
-          500,
-          null,
-          `Error creating Lead Action Result: ${error.message}`
-        )
-      );
+  if (!leadAction || !title) {
+    return res.status(400).json(
+      new apiResponse(
+        400,
+        null,
+        "leadAction and title are required"
+      )
+    );
   }
+
+  if (!mongoose.Types.ObjectId.isValid(leadAction)) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "Invalid leadAction ID"));
+  }
+
+  const leadActionExists = await LeadAction.findById(leadAction);
+
+  if (!leadActionExists) {
+    return res
+      .status(404)
+      .json(new apiResponse(404, null, "Lead Action not found"));
+  }
+
+  // Duplicate check
+  const existingResult = await LeadActionResult.findOne({
+    leadAction,
+    title: title.trim(),
+  });
+
+  if (existingResult) {
+    return res.status(409).json(
+      new apiResponse(
+        409,
+        null,
+        "This title already exists for the selected Lead Action"
+      )
+    );
+  }
+
+  const result = await LeadActionResult.create({
+    leadAction,
+    title: title.trim(),
+  });
+
+  const populatedResult = await LeadActionResult.findById(
+    result._id
+  ).populate("leadAction", "title LeadActionId");
+
+  return res.status(201).json(
+    new apiResponse(
+      201,
+      populatedResult,
+      "Lead Action Result created successfully"
+    )
+  );
 });
 
 const getAllLeadActionResults = asyncHandler(async (req, res) => {
   const {
     search,
     leadAction,
-    sortBy = "recent",
+    sortBy = "order",
     page = 1,
     limit = 10,
     pagination = "true",
   } = req.query;
 
-  let query = {};
+  const query = {};
 
   if (leadAction && mongoose.Types.ObjectId.isValid(leadAction)) {
-    query.LeadAction = leadAction;
+    query.leadAction = leadAction;
   }
 
   if (search) {
@@ -89,7 +89,7 @@ const getAllLeadActionResults = asyncHandler(async (req, res) => {
   }
 
   let resultQuery = LeadActionResult.find(query).populate(
-    "LeadAction",
+    "leadAction",
     "title LeadActionId"
   );
 
@@ -98,9 +98,15 @@ const getAllLeadActionResults = asyncHandler(async (req, res) => {
     resultQuery = resultQuery.sort({ createdAt: -1 });
   } else if (sortBy === "oldest") {
     resultQuery = resultQuery.sort({ createdAt: 1 });
+  } else {
+    // Default sorting by order
+    resultQuery = resultQuery.sort({
+      order: 1,
+      createdAt: 1,
+    });
   }
 
-  // If pagination=false return all records
+  // Without pagination
   if (pagination === "false") {
     const results = await resultQuery;
 
@@ -127,7 +133,7 @@ const getAllLeadActionResults = asyncHandler(async (req, res) => {
 
   const totalPages = Math.ceil(totalRecords / limitNumber);
 
-  res.status(200).json(
+  return res.status(200).json(
     new apiResponse(
       200,
       {
@@ -156,7 +162,7 @@ const getLeadActionResultById = asyncHandler(async (req, res) => {
   }
 
   const result = await LeadActionResult.findById(id).populate(
-    "LeadAction",
+    "leadAction",
     "title LeadActionId"
   );
 
@@ -166,20 +172,18 @@ const getLeadActionResultById = asyncHandler(async (req, res) => {
       .json(new apiResponse(404, null, "Lead Action Result not found"));
   }
 
-  res
-    .status(200)
-    .json(
-      new apiResponse(
-        200,
-        result,
-        "Lead Action Result fetched successfully"
-      )
-    );
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      result,
+      "Lead Action Result fetched successfully"
+    )
+  );
 });
 
 const updateLeadActionResult = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { LeadAction, title, status } = req.body;
+  const { leadAction, title, status } = req.body;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res
@@ -195,22 +199,22 @@ const updateLeadActionResult = asyncHandler(async (req, res) => {
       .json(new apiResponse(404, null, "Lead Action Result not found"));
   }
 
-  if (LeadAction) {
-    if (!mongoose.Types.ObjectId.isValid(LeadAction)) {
+  if (leadAction) {
+    if (!mongoose.Types.ObjectId.isValid(leadAction)) {
       return res
         .status(400)
-        .json(new apiResponse(400, null, "Invalid LeadAction ID"));
+        .json(new apiResponse(400, null, "Invalid Lead Action ID"));
     }
 
-    const leadActionExists = await LeadAction.findById(LeadAction);
+    const leadActionExists = await LeadAction.findById(leadAction);
 
     if (!leadActionExists) {
       return res
         .status(404)
-        .json(new apiResponse(404, null, "LeadAction not found"));
+        .json(new apiResponse(404, null, "Lead Action not found"));
     }
 
-    result.LeadAction = LeadAction;
+    result.leadAction = leadAction;
   }
 
   if (title !== undefined) {
@@ -224,19 +228,17 @@ const updateLeadActionResult = asyncHandler(async (req, res) => {
   await result.save();
 
   const updatedResult = await LeadActionResult.findById(id).populate(
-    "LeadAction",
+    "leadAction",
     "title LeadActionId"
   );
 
-  res
-    .status(200)
-    .json(
-      new apiResponse(
-        200,
-        updatedResult,
-        "Lead Action Result updated successfully"
-      )
-    );
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      updatedResult,
+      "Lead Action Result updated successfully"
+    )
+  );
 });
 
 const deleteLeadActionResult = asyncHandler(async (req, res) => {
@@ -258,15 +260,55 @@ const deleteLeadActionResult = asyncHandler(async (req, res) => {
 
   await LeadActionResult.findByIdAndDelete(id);
 
-  res
-    .status(200)
-    .json(
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      null,
+      "Lead Action Result deleted successfully"
+    )
+  );
+});
+
+const reorderLeadActionResults = asyncHandler(async (req, res) => {
+  const { leadActionResults } = req.body;
+
+  if (
+    !Array.isArray(leadActionResults) ||
+    leadActionResults.length === 0
+  ) {
+    return res.status(400).json(
       new apiResponse(
-        200,
+        400,
         null,
-        "Lead Action Result deleted successfully"
+        "leadActionResults array is required"
       )
     );
+  }
+
+  const bulkOps = leadActionResults.map((id, index) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: {
+        $set: {
+          order: index + 1,
+        },
+      },
+    },
+  }));
+
+  await LeadActionResult.bulkWrite(bulkOps);
+
+  const updatedResults = await LeadActionResult.find()
+    .populate("leadAction", "title")
+    .sort({ order: 1 });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      updatedResults,
+      "Lead Action Results reordered successfully"
+    )
+  );
 });
 
 export {
@@ -275,4 +317,5 @@ export {
   getLeadActionResultById,
   updateLeadActionResult,
   deleteLeadActionResult,
+  reorderLeadActionResults
 };

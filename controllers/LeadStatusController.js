@@ -1,41 +1,61 @@
 import LeadStatus from "../models/LeadStatus.modal.js";
+import LeadActionResult from "../models/LeadActionResult.modal.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
 import mongoose from "mongoose";
 
-// -------------------------------------
-// ADD SINGLE LEAD STATUS
-// -------------------------------------
 const addLeadStatus = asyncHandler(async (req, res) => {
   const { title, leadActionResult } = req.body;
 
-  if (!title) {
-    return res
-      .status(400)
-      .json(new apiResponse(400, null, "Lead status title is required"));
+  if (!title || !leadActionResult) {
+    return res.status(400).json(
+      new apiResponse(
+        400,
+        null,
+        "title and leadActionResult are required"
+      )
+    );
   }
 
-  // check duplicate
-  // const existing = await LeadStatus.findOne({ title: title.trim() });
-  // if (existing) {
-  //   return res
-  //     .status(400)
-  //     .json(new apiResponse(400, null, "Lead status already exists"));
-  // }
+  if (!mongoose.Types.ObjectId.isValid(leadActionResult)) {
+    return res.status(400).json(
+      new apiResponse(400, null, "Invalid leadActionResult ID")
+    );
+  }
+
+  const leadActionResultExists = await LeadActionResult.findById(
+    leadActionResult
+  );
+
+  if (!leadActionResultExists) {
+    return res.status(404).json(
+      new apiResponse(404, null, "Lead Action Result not found")
+    );
+  }
 
   const newStatus = await LeadStatus.create({
     title: title.trim(),
-    leadActionResult: leadActionResult || null,
+    leadActionResult,
   });
 
-  res
-    .status(201)
-    .json(new apiResponse(201, newStatus, "Lead status created successfully"));
+  const populatedStatus = await LeadStatus.findById(newStatus._id)
+    .populate({
+      path: "leadActionResult",
+      populate: {
+        path: "leadAction",
+        select: "title LeadActionId",
+      },
+    });
+
+  return res.status(201).json(
+    new apiResponse(
+      201,
+      populatedStatus,
+      "Lead status created successfully"
+    )
+  );
 });
 
-// -------------------------------------
-// BULK ADD LEAD STATUSES
-// -------------------------------------
 const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
   const statuses = req.body.statuses;
 
@@ -55,9 +75,58 @@ const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
       )
   );
 
-  // Check existing titles in DB
+  // Validate leadActionResult IDs
+  for (const status of unique) {
+    if (!status.title?.trim()) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "Title is required"));
+    }
+
+    if (!status.leadActionResult) {
+      return res
+        .status(400)
+        .json(
+          new apiResponse(
+            400,
+            null,
+            `leadActionResult is required for '${status.title}'`
+          )
+        );
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(status.leadActionResult)) {
+      return res
+        .status(400)
+        .json(
+          new apiResponse(
+            400,
+            null,
+            `Invalid leadActionResult ID for '${status.title}'`
+          )
+        );
+    }
+
+    const exists = await LeadActionResult.findById(status.leadActionResult);
+
+    if (!exists) {
+      return res
+        .status(404)
+        .json(
+          new apiResponse(
+            404,
+            null,
+            `Lead Action Result not found for '${status.title}'`
+          )
+        );
+    }
+  }
+
+  // Check existing titles
   const existingTitles = await LeadStatus.find({
-    title: { $in: unique.map((s) => s.title.trim()) },
+    title: {
+      $in: unique.map((s) => s.title.trim()),
+    },
   }).distinct("title");
 
   const toInsert = unique.filter(
@@ -73,26 +142,34 @@ const bulkAddLeadStatuses = asyncHandler(async (req, res) => {
   const inserted = await LeadStatus.insertMany(
     toInsert.map((s) => ({
       title: s.title.trim(),
-      leadActionResult: s.leadActionResult  || null,
+      leadActionResult: s.leadActionResult,
     })),
     { ordered: false }
   );
 
-  res.status(201).json(
+  const populatedStatuses = await LeadStatus.find({
+    _id: { $in: inserted.map((item) => item._id) },
+  }).populate({
+    path: "leadActionResult",
+    populate: {
+      path: "leadAction",
+      select: "title LeadActionId",
+    },
+  });
+
+  return res.status(201).json(
     new apiResponse(
       201,
       {
         totalReceived: statuses.length,
         insertedCount: inserted.length,
+        data: populatedStatuses,
       },
       `${inserted.length} new lead statuses added successfully`
     )
   );
 });
 
-// -------------------------------------
-// GET ALL STATUSES
-// -------------------------------------
 const getAllLeadStatuses = asyncHandler(async (req, res) => {
   const {
     search,
@@ -148,9 +225,6 @@ const getAllLeadStatuses = asyncHandler(async (req, res) => {
   );
 });
 
-// -------------------------------------
-// GET BY ID
-// -------------------------------------
 const getLeadStatusById = asyncHandler(async (req, res) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -172,9 +246,6 @@ const getLeadStatusById = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, data, "Lead status fetched successfully"));
 });
 
-// -------------------------------------
-// UPDATE LEAD STATUS
-// -------------------------------------
 const updateLeadStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { title, leadActionResult } = req.body;
@@ -202,9 +273,6 @@ const updateLeadStatus = asyncHandler(async (req, res) => {
     .json(new apiResponse(200, data, "Lead status updated successfully"));
 });
 
-// -------------------------------------
-// DELETE STATUS
-// -------------------------------------
 const deleteLeadStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

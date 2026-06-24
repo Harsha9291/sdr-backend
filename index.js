@@ -10,7 +10,6 @@ import leadsLogRoutes from "./router/leadHistoryRoutes.js";
 import leadStatusRoutes from "./router/LeadStatusRoutes.js";
 import leadActionRoutes from "./router/LeadActionRoutes.js";
 import leadActionResultRoutes from "./router/LeadActionResultRoutes.js";
-import leadRateRoutes from "./router/LeadRateRoutes.js";
 import { startAllCronJobs } from "./utils/cronJobs.js";
 import excelSyncRoutes from "./router/excelSyncRoutes.js";
 
@@ -37,7 +36,6 @@ app.use("/api/leadActionResult", leadActionResultRoutes);
 app.use("/api/leads", leadsRoutes);
 app.use("/api/leadsLog", leadsLogRoutes);
 app.use("/api/leadStatus", leadStatusRoutes);
-app.use("/api/leadRate", leadRateRoutes);
 app.use("/api/excel", excelSyncRoutes);
 
 const PORT = process.env.PORT || 5000;

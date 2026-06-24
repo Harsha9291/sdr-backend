@@ -96,29 +96,81 @@ const bulkAddLeadActions = asyncHandler(async (req, res) => {
   }
 });
 
-// 🟡 Get All Lead Actions
 const getAllLeadActions = asyncHandler(async (req, res) => {
-  const { search, sortBy = "recent" } = req.query;
+  const {
+    search,
+    sortBy = "order",
+    page = 1,
+    limit = 10,
+    pagination = "true",
+  } = req.query;
 
   let query = {};
+
   if (search) {
-    const regex = new RegExp(search, "i");
-    query.title = regex;
+    query.title = {
+      $regex: search,
+      $options: "i",
+    };
   }
 
   let actionQuery = LeadAction.find(query);
 
-  if (sortBy === "recent") actionQuery = actionQuery.sort({ createdAt: -1 });
-  else if (sortBy === "oldest")
+  // Sorting
+  if (sortBy === "recent") {
+    actionQuery = actionQuery.sort({ createdAt: -1 });
+  } else if (sortBy === "oldest") {
     actionQuery = actionQuery.sort({ createdAt: 1 });
+  } else {
+    // Default custom order
+    actionQuery = actionQuery.sort({ order: 1, createdAt: 1 });
+  }
 
-  const actions = await actionQuery;
+  // If pagination=false, return all records
+  if (pagination === "false") {
+    const actions = await actionQuery;
 
-  res
-    .status(200)
-    .json(new apiResponse(200, actions, "Lead actions fetched successfully"));
+    return res.status(200).json(
+      new apiResponse(
+        200,
+        {
+          data: actions,
+          totalRecords: actions.length,
+        },
+        "Lead actions fetched successfully"
+      )
+    );
+  }
+
+  const pageNumber = Math.max(1, parseInt(page));
+  const limitNumber = Math.max(1, parseInt(limit));
+
+  const totalRecords = await LeadAction.countDocuments(query);
+
+  const actions = await actionQuery
+    .skip((pageNumber - 1) * limitNumber)
+    .limit(limitNumber);
+
+  const totalPages = Math.ceil(totalRecords / limitNumber);
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        data: actions,
+        pagination: {
+          currentPage: pageNumber,
+          totalPages,
+          totalRecords,
+          limit: limitNumber,
+          hasNextPage: pageNumber < totalPages,
+          hasPrevPage: pageNumber > 1,
+        },
+      },
+      "Lead actions fetched successfully"
+    )
+  );
 });
-
 // 🟡 Get Lead Action by ID
 const getLeadActionById = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -193,6 +245,42 @@ const deleteLeadAction = asyncHandler(async (req, res) => {
     .status(200)
     .json(new apiResponse(200, null, "Lead action deleted successfully"));
 });
+
+
+const reorderLeadActions = asyncHandler(async (req, res) => {
+  const { leadActions } = req.body;
+
+  if (!Array.isArray(leadActions) || leadActions.length === 0) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "leadActions array is required"));
+  }
+
+  const bulkOps = leadActions.map((id, index) => ({
+    updateOne: {
+      filter: { _id: id },
+      update: {
+        $set: {
+          order: index + 1,
+        },
+      },
+    },
+  }));
+
+  await LeadAction.bulkWrite(bulkOps);
+
+  const updatedActions = await LeadAction.find()
+    .sort({ order: 1 });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      updatedActions,
+      "Lead Actions reordered successfully"
+    )
+  );
+});
+
 
 export {
   addLeadAction,

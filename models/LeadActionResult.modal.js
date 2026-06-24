@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const LeadActionResultSchema = new mongoose.Schema(
   {
-    LeadAction: {
+    leadAction: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "LeadAction",
       required: true,
@@ -16,6 +16,10 @@ const LeadActionResultSchema = new mongoose.Schema(
     status: {
       type: Boolean,
       default: true,
+    },
+    order: {
+      type: Number,
+      default: 0,
     },
   },
   {
