@@ -1,74 +1,56 @@
+
+
+
 import mongoose from "mongoose";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
 
 const UserSchema = new mongoose.Schema(
   {
     phone: {
       type: String,
-      required: true,
     },
-    otp: {
+    userId: {
       type: String,
     },
+    otp: String,
+    otpExpiration: Date,
+
     isNew: {
       type: Boolean,
       default: true,
       required: true,
     },
-    otpExpiration: {
-      type: Date,
-      // required: true,
-    },
-    name: {
-      type: String,
-    },
+    name: String,
     gender: {
       type: String,
+      enum: ["Male", "Female", "Other"],
     },
-    employeeType: {
-      type: String,
+    isBlock: {
+      type: Boolean,
+      default: false
     },
-    // roll: {
-    //   type: String,
-    //   enum: ["User", "Employee", "Admin"],
-    //   default: "User",
-    //   required: true,
-    // },
-    roll: {
+
+      role: {
       type: String,
       enum: ["Admin", "Manager", "Telecaller", "Employee"],
       default: "Telecaller",
       required: true,
     },
 
-    dob: {
-      type: Date,
-    },
+
+    dob: Date,
+    age: Number,
+
     email: {
       type: String,
       trim: true,
       lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, "Invalid email format"],
     },
-    profilepic: {
-      type: String,
-    },
-    occupation: {
-      type: String,
-    },
+    profilePic: String,
     address: {
       type: String,
-    },
-
-    location: {
-      type: {
-        type: String,
-        enum: ["Point"],
-        default: "Point",
-      },
-      coordinates: {
-        type: [Number],
-      },
+      trim: true,
     },
     password: {
       type: String,
@@ -76,28 +58,16 @@ const UserSchema = new mongoose.Schema(
     fcmToken: {
       type: String,
     },
-
-    authToken: {
-      type: String,
-    },
   },
-  {
-    timestamps: { createdAt: true, updatedAt: true },
-  },
+  { timestamps: true },
 );
 
-UserSchema.methods.matchPassword = async function (password) {
-  return await bcrypt.compare(password, this.password);
-};
-
 UserSchema.methods.generateAuthToken = function () {
-  const token = jwt.sign(
-    { userId: this._id, accountType: this.accountType },
+  return jwt.sign(
+    { userId: this._id, role: this.role },
     process.env.JWT_SECRET,
+    { expiresIn: "365d" },
   );
-  return token;
 };
 
-const User = mongoose.model("User", UserSchema);
-
-export default User;
+export default mongoose.model("User", UserSchema);
