@@ -5,7 +5,6 @@ import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asynchandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
 
-// Add Integration
 const addIntegration = asyncHandler(async (req, res) => {
   try {
     const { platform, googleSheetUrl, fetchTime, status } = req.body;
@@ -63,12 +62,30 @@ const addIntegration = asyncHandler(async (req, res) => {
   }
 });
 
-// Get All Integrations
 const getAllIntegrations = asyncHandler(async (req, res) => {
-  const { search, sortBy = "recent" } = req.query;
+  const {
+    search,
+    platform,
+    status,
+    sortBy = "recent",
+    page = 1,
+    limit = 10,
+    pagination = "true",
+  } = req.query;
 
-  let query = {};
+  const query = {};
 
+  // Platform filter
+  if (platform && mongoose.Types.ObjectId.isValid(platform)) {
+    query.platform = platform;
+  }
+
+  // Status filter
+  if (status !== undefined) {
+    query.status = status === "true";
+  }
+
+  // Search by platform title
   if (search) {
     const platforms = await Platform.find({
       title: { $regex: search, $options: "i" },
@@ -81,26 +98,41 @@ const getAllIntegrations = asyncHandler(async (req, res) => {
 
   let integrationsQuery = Integration.find(query).populate("platform");
 
+  // Sorting
   if (sortBy === "recent") {
     integrationsQuery = integrationsQuery.sort({ createdAt: -1 });
   } else if (sortBy === "oldest") {
     integrationsQuery = integrationsQuery.sort({ createdAt: 1 });
   }
 
+  const totalRecords = await Integration.countDocuments(query);
+
+  // Pagination
+  if (pagination === "true") {
+    const skip = (Number(page) - 1) * Number(limit);
+
+    integrationsQuery = integrationsQuery
+      .skip(skip)
+      .limit(Number(limit));
+  }
+
   const integrations = await integrationsQuery;
 
-  res
-    .status(200)
-    .json(
-      new apiResponse(
-        200,
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
         integrations,
-        "Integrations fetched successfully"
-      )
-    );
+        totalRecords,
+        currentPage: Number(page),
+        totalPages: Math.ceil(totalRecords / Number(limit)),
+        limit: Number(limit),
+      },
+      "Integrations fetched successfully"
+    )
+  );
 });
 
-// Get Integration By Id
 const getIntegrationById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -129,7 +161,6 @@ const getIntegrationById = asyncHandler(async (req, res) => {
     );
 });
 
-// Update Integration
 const updateIntegration = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { platform, googleSheetUrl, fetchTime, status } = req.body;
@@ -190,7 +221,6 @@ const updateIntegration = asyncHandler(async (req, res) => {
     );
 });
 
-// Delete Integration
 const deleteIntegration = asyncHandler(async (req, res) => {
   const { id } = req.params;
 

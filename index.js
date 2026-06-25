@@ -10,8 +10,9 @@ import leadsLogRoutes from "./router/leadHistoryRoutes.js";
 import leadStatusRoutes from "./router/LeadStatusRoutes.js";
 import leadActionRoutes from "./router/LeadActionRoutes.js";
 import leadActionResultRoutes from "./router/LeadActionResultRoutes.js";
-import { startAllCronJobs } from "./utils/cronJobs.js";
+import { startExcelSyncCron } from "./utils/cronJobs.js";
 import excelSyncRoutes from "./router/excelSyncRoutes.js";
+import intigrationRoutes from "./router/IntegrationRoutes.js";
 
 dotenv.config();
 
@@ -37,11 +38,12 @@ app.use("/api/leads", leadsRoutes);
 app.use("/api/leadsLog", leadsLogRoutes);
 app.use("/api/leadStatus", leadStatusRoutes);
 app.use("/api/excel", excelSyncRoutes);
+app.use("/api/intigration", intigrationRoutes);
 
 const PORT = process.env.PORT || 5000;
 
 app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   connectDB();
-  startAllCronJobs();
+  startExcelSyncCron();
 });

@@ -13,6 +13,13 @@ const IntegrationSchema = new mongoose.Schema(
     fetchTime: {
       type: String,
     },
+    // in min
+
+    lastSyncedAt: {
+      type: Date,
+      default: null,
+    },
+
     status: {
       type: Boolean,
       default: false,
