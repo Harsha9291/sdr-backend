@@ -11,15 +11,52 @@ const leadHistorySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
     },
-    actionType: {
-      type: String,
-      required: true,
+    action: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
+    },
+    actionResult: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadActionResult",
     },
     status: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadStatus",
+    },
+
+    prevAction: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
+    },
+
+    prevActionResult: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadActionResult",
+    },
+    prevStatus: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadStatus",
+    },
+
+    nextAction: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LeadAction",
+    },
+    currentStatus: {
       type: String,
     },
-    previousStatus: {
+    siteVisitDate: {
       type: String,
+    },
+    followUpDate: {
+      type: String,
+    },
+    followUpTime: {
+      type: String,
+    },
+    remark: {
+      type: String,
+      trim: true,
     },
     comment: {
       type: String,

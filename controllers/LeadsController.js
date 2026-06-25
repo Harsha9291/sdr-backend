@@ -4,9 +4,6 @@ import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
 import mongoose from "mongoose";
 
-/* ======================================================
-   🟢 Add Single Lead
-====================================================== */
 const addLead = asyncHandler(async (req, res) => {
   try {
     const {
@@ -75,9 +72,6 @@ const addLead = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Bulk Add Leads
-====================================================== */
 const bulkAddLeads = asyncHandler(async (req, res) => {
   const leads = req.body.leads;
 
@@ -182,9 +176,6 @@ const bulkAddLeads = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Update Lead
-====================================================== */
 const updateLead = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
@@ -230,58 +221,90 @@ const updateLead = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Update Status (Separate endpoint for status updates)
-====================================================== */
 const updateStatus = asyncHandler(async (req, res) => {
-  try {
-    const { id } = req.params;
-    const lead = await Leads.findById(id);
+  const { id } = req.params;
 
-    if (!lead) {
-      return res.status(404).json(new apiResponse(404, null, "Lead not found"));
-    }
+  const {
+    action,
+    actionResult,
+    status,
+    currentStatus,
+    nextAction,
+    siteVisitDate,
+    followUpDate,
+    followUpTime,
+    remark,
+    comment,
+  } = req.body;
 
-    const previousStatus = lead.status;
-    const previousAction = lead.action;
+  const lead = await Leads.findById(id);
 
-    // Only update provided fields
-    if (req.body.status) lead.status = req.body.status;
-    if (req.body.action) lead.action = req.body.action;
-    if (req.body.currentStatus) lead.currentStatus = req.body.currentStatus;
-
-    await lead.save();
-
-    const historyData = {
-      leadId: lead._id,
-      employeeId: lead.assignTo || null,
-      actionType: req.body.actionType || "Status Updated",
-      previousStatus: previousStatus || null,
-      status: lead.status,
-      comment: req.body.comment || null,
-      performedBy: req.user?._id || null,
-      performedAt: new Date(),
-    };
-
-    await LeadHistory.create(historyData);
-
-    res
-      .status(200)
-      .json(
-        new apiResponse(200, lead, "Status updated successfully and logged"),
-      );
-  } catch (error) {
-    res
-      .status(500)
-      .json(
-        new apiResponse(500, null, `Error updating status: ${error.message}`),
-      );
+  if (!lead) {
+    return res
+      .status(404)
+      .json(new apiResponse(404, null, "Lead not found"));
   }
+
+  const previousStatus = lead.status;
+  const previousAction = lead.action;
+  const prevActionResult = lead.actionResult;
+  const previousCurrentStatus = lead.currentStatus;
+
+  // Update only provided fields
+  if (status) lead.status = status;
+  if (action) lead.action = action;
+  if (actionResult) lead.actionResult = actionResult;
+  if (currentStatus) lead.currentStatus = currentStatus;
+
+  if (siteVisitDate !== undefined)
+    lead.siteVisitDate = siteVisitDate;
+
+  if (followUpDate !== undefined)
+    lead.followUpDate = followUpDate;
+
+  if (followUpTime !== undefined)
+    lead.followUpTime = followUpTime;
+
+  if (remark !== undefined)
+    lead.remark = remark;
+
+  await lead.save();
+
+  await LeadHistory.create({
+    leadId: lead._id,
+    employeeId: lead.assignTo || null,
+
+    action: action || previousAction,
+    actionResult: actionResult || prevActionResult,
+    status: status || previousStatus,
+
+    prevStatus: previousStatus || null,
+    prevAction: previousAction || null,
+    prevActionResult: prevActionResult || null,
+
+    nextAction: nextAction || null,
+    currentStatus: currentStatus || previousCurrentStatus,
+
+    siteVisitDate: siteVisitDate || null,
+    followUpDate: followUpDate || null,
+    followUpTime: followUpTime || null,
+
+    remark: remark || null,
+    comment: comment || null,
+
+    performedBy: req.user?._id || null,
+    performedAt: new Date(),
+  });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      lead,
+      "Lead status updated successfully"
+    )
+  );
 });
 
-/* ======================================================
-   🟢 Delete Lead
-====================================================== */
 const deleteLead = asyncHandler(async (req, res) => {
   try {
     const { id } = req.params;
@@ -317,9 +340,6 @@ const deleteLead = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Get All Leads (with populated refs)
-====================================================== */
 const getAllLeads = asyncHandler(async (req, res) => {
   const {
     isPagination = "true",
@@ -337,229 +357,228 @@ const getAllLeads = asyncHandler(async (req, res) => {
     assigned = "all",
   } = req.query;
 
-  const pipeline = [];
+  const query = {};
 
-  // 🔍 Search filter
+  // Search
   if (search) {
-    const regex = new RegExp(search, "i");
-    pipeline.push({
-      $match: {
-        $or: [
-          { name: regex },
-          { phone: regex },
-          { email: regex },
-          { platform: regex },
-          { remark: regex },
-        ],
+    const searchWords = search.trim().split(/\s+/);
+
+    const regexConditions = searchWords.map((word) => ({
+      $regex: word,
+      $options: "i",
+    }));
+
+    // Action IDs
+    const actionIds = await LeadAction.find({
+      title: {
+        $regex: searchWords.join("|"),
+        $options: "i",
       },
-    });
-  }
+    }).distinct("_id");
 
-  // 📅 Date filter
-  if (fromDate || toDate) {
-    const dateFilter = {};
-    if (fromDate) {
-      const from = new Date(fromDate);
-      from.setHours(0, 0, 0, 0);
-      dateFilter.$gte = from;
-    }
-    if (toDate) {
-      const to = new Date(toDate);
-      to.setHours(23, 59, 59, 999);
-      dateFilter.$lte = to;
-    }
-    pipeline.push({ $match: { leadDate: dateFilter } });
-  }
+    // Status IDs
+    const statusIds = await LeadStatus.find({
+      title: {
+        $regex: searchWords.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
 
-  // 👤 Assigned user filter
-  if (assignTo && mongoose.Types.ObjectId.isValid(assignTo)) {
-    pipeline.push({
-      $match: { assignTo: new mongoose.Types.ObjectId(assignTo) },
-    });
-  }
+    // User IDs
+    const userIds = await User.find({
+      name: {
+        $regex: searchWords.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
 
-  if (status && mongoose.Types.ObjectId.isValid(status)) {
-    pipeline.push({
-      $match: { status: new mongoose.Types.ObjectId(status) },
-    });
-  }
-
-  if (action && mongoose.Types.ObjectId.isValid(action)) {
-    pipeline.push({
-      $match: { action: new mongoose.Types.ObjectId(action) },
-    });
-  }
-
-  if (platformId) {
-    pipeline.push({
-      $match: { platform: Number(platformId) },
-    });
-  }
-
-  if (currentStatus) {
-    pipeline.push({
-      $match: {
-        currentStatus: {
-          $regex: currentStatus,
+    query.$or = [
+      {
+        name: {
+          $regex: searchWords.join("|"),
           $options: "i",
         },
       },
-    });
-  }
-
-  // 🟦 Assigned / Unassigned Leads filter
-  if (assigned === "yes") {
-    pipeline.push({ $match: { assignTo: { $ne: null } } });
-  } else if (assigned === "no") {
-    pipeline.push({ $match: { assignTo: null } });
-  }
-
-  // 🔽 Sorting
-  if (sortBy === "recent") {
-    pipeline.push({ $sort: { createdAt: -1 } });
-  } else if (sortBy === "oldest") {
-    pipeline.push({ $sort: { createdAt: 1 } });
-  }
-
-  // ==========================================
-  // 🟦 POPULATE assignTo (User)
-  // ==========================================
-  pipeline.push({
-    $lookup: {
-      from: "users",
-      localField: "assignTo",
-      foreignField: "_id",
-      as: "assignTo",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$assignTo", preserveNullAndEmptyArrays: true },
-  });
-
-  // ==========================================
-  // 🟩 POPULATE action (LeadAction)
-  // ==========================================
-  pipeline.push({
-    $lookup: {
-      from: "leadactions",
-      localField: "action",
-      foreignField: "_id",
-      as: "action",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$action", preserveNullAndEmptyArrays: true },
-  });
-
-  // ==========================================
-  // 🟪 POPULATE status (LeadStatus)
-  // ==========================================
-  pipeline.push({
-    $lookup: {
-      from: "leadstatuses",
-      localField: "status",
-      foreignField: "_id",
-      as: "status",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$status", preserveNullAndEmptyArrays: true },
-  });
-
-  // ==========================================
-  // 🟧 POPULATE prevAction
-  // ==========================================
-  pipeline.push({
-    $lookup: {
-      from: "leadactions",
-      localField: "prevAction",
-      foreignField: "_id",
-      as: "prevAction",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$prevAction", preserveNullAndEmptyArrays: true },
-  });
-
-  // ==========================================
-  // 🟥 POPULATE prevStatus
-  // ==========================================
-  pipeline.push({
-    $lookup: {
-      from: "leadstatuses",
-      localField: "prevStatus",
-      foreignField: "_id",
-      as: "prevStatus",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$prevStatus", preserveNullAndEmptyArrays: true },
-  });
-
-  // PLATFORM LOOKUP
-  pipeline.push({
-    $lookup: {
-      from: "platforms",
-      localField: "platform",
-      foreignField: "PlatformId",
-      as: "platformData",
-    },
-  });
-  pipeline.push({
-    $unwind: { path: "$platformData", preserveNullAndEmptyArrays: true },
-  });
-
-  // 🧹 Clean empty fields
-  pipeline.push({
-    $replaceRoot: {
-      newRoot: {
-        $arrayToObject: {
-          $filter: {
-            input: { $objectToArray: "$$ROOT" },
-            as: "field",
-            cond: {
-              $and: [
-                { $ne: ["$$field.v", null] },
-                { $ne: ["$$field.v", ""] },
-                { $ne: ["$$field.v", []] },
-              ],
-            },
-          },
+      {
+        phone: {
+          $regex: searchWords.join("|"),
+          $options: "i",
         },
       },
-    },
-  });
+      {
+        email: {
+          $regex: searchWords.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        leadCode: {
+          $regex: searchWords.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        remark: {
+          $regex: searchWords.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        comment: {
+          $regex: searchWords.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        currentStatus: {
+          $regex: searchWords.join("|"),
+          $options: "i",
+        },
+      },
 
-  // 📊 Total Count
-  const countPipeline = [...pipeline];
-  countPipeline.push({ $count: "count" });
-  const totalData = await Leads.aggregate(countPipeline);
-  const total = totalData[0]?.count || 0;
-
-  // 📄 Pagination
-  if (isPagination === "true") {
-    pipeline.push({ $skip: (page - 1) * limit }, { $limit: parseInt(limit) });
+      { action: { $in: actionIds } },
+      { status: { $in: statusIds } },
+      { assignTo: { $in: userIds } },
+    ];
   }
 
-  const leads = await Leads.aggregate(pipeline);
+  // Date Filter
+  if (fromDate || toDate) {
+    query.leadDate = {};
+
+    if (fromDate) {
+      const from = new Date(fromDate);
+      from.setHours(0, 0, 0, 0);
+      query.leadDate.$gte = from;
+    }
+
+    if (toDate) {
+      const to = new Date(toDate);
+      to.setHours(23, 59, 59, 999);
+      query.leadDate.$lte = to;
+    }
+  }
+
+  // Assign To Filter
+  if (
+    assignTo &&
+    mongoose.Types.ObjectId.isValid(assignTo)
+  ) {
+    query.assignTo = assignTo;
+  }
+
+  // Status Filter
+  if (
+    status &&
+    mongoose.Types.ObjectId.isValid(status)
+  ) {
+    query.status = status;
+  }
+
+  // Action Filter
+  if (
+    action &&
+    mongoose.Types.ObjectId.isValid(action)
+  ) {
+    query.action = action;
+  }
+
+  // Platform Filter
+  if (platformId) {
+    query.platform = Number(platformId);
+  }
+
+  // Current Status Filter
+  if (currentStatus) {
+    query.currentStatus = {
+      $regex: currentStatus,
+      $options: "i",
+    };
+  }
+
+  // Assigned / Unassigned Filter
+  if (assigned === "yes") {
+    query.assignTo = { $ne: null };
+  }
+
+  if (assigned === "no") {
+    query.assignTo = null;
+  }
+
+  // Sorting
+  let sortObj = {};
+
+  if (sortBy === "recent") {
+    sortObj = { createdAt: -1 };
+  } else if (sortBy === "oldest") {
+    sortObj = { createdAt: 1 };
+  } else if (sortBy === "name") {
+    sortObj = { name: 1 };
+  }
+
+  // Total Count
+  const totalLeads = await Leads.countDocuments(query);
+
+  let leadQuery = Leads.find(query)
+    .populate({
+      path: "assignTo",
+      select: "name email role mobileNumber",
+    })
+    .populate({
+      path: "action",
+      select: "title",
+    })
+    .populate({
+      path: "actionResult",
+      select: "title",
+    })
+    .populate({
+      path: "status",
+      select: "title",
+    })
+    .populate({
+      path: "prevAction",
+      select: "title",
+    })
+    .populate({
+      path: "prevActionResult",
+      select: "title",
+    })
+    .populate({
+      path: "prevStatus",
+      select: "title",
+    })
+    .populate({
+      path: "nextAction",
+      select: "title",
+    })
+    .sort(sortObj);
+
+  if (isPagination === "true") {
+    leadQuery = leadQuery
+      .skip((Number(page) - 1) * Number(limit))
+      .limit(Number(limit));
+  }
+
+  const leads = await leadQuery;
 
   res.status(200).json(
     new apiResponse(
       200,
       {
         leads,
-        totalLeads: total,
-        totalPages: Math.ceil(total / limit),
+        totalLeads,
+        totalPages:
+          isPagination === "true"
+            ? Math.ceil(totalLeads / Number(limit))
+            : 1,
         currentPage: Number(page),
       },
-      "Leads fetched successfully",
-    ),
+      "Leads fetched successfully"
+    )
   );
 });
 
-/* ======================================================
-   🟢 Get Lead by ID
-====================================================== */
 const getLeadById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
@@ -577,9 +596,6 @@ const getLeadById = asyncHandler(async (req, res) => {
   res.status(200).json(new apiResponse(200, lead, "Lead fetched successfully"));
 });
 
-/* ======================================================
-   🟢 Assign Leads (manual / auto)
-====================================================== */
 const assignLeads = asyncHandler(async (req, res) => {
   const { type, employeeId, employeeIds, leadIds } = req.body;
 
@@ -678,9 +694,6 @@ const assignLeads = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Get Lead Count by Status (with populated status)
-====================================================== */
 const getLeadCountByStatus = asyncHandler(async (req, res) => {
   try {
     const result = await Leads.aggregate([
@@ -724,9 +737,6 @@ const getLeadCountByStatus = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Get Lead Count by Current Status
-====================================================== */
 const getLeadCountByCurrentStatus = asyncHandler(async (req, res) => {
   try {
     const result = await Leads.aggregate([
@@ -762,9 +772,6 @@ const getLeadCountByCurrentStatus = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Transfer Single Lead
-====================================================== */
 const transferSingleLead = asyncHandler(async (req, res) => {
   const { leadId } = req.params;
   const { userId, reason } = req.body;
@@ -824,9 +831,6 @@ const transferSingleLead = asyncHandler(async (req, res) => {
   }
 });
 
-/* ======================================================
-   🟢 Get Dashboard Stats
-====================================================== */
 const getDashboardStats = asyncHandler(async (req, res) => {
   try {
     const matchStage = {};
@@ -918,6 +922,397 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   }
 });
 
+
+
+const getLeadStatusStats12 = asyncHandler(async (req, res) => {
+  // Total Leads
+  const totalLeads = await Leads.countDocuments();
+
+  // Status Wise Count
+  const statusWise = await Leads.aggregate([
+    {
+      $lookup: {
+        from: "leadstatuses",
+        localField: "status",
+        foreignField: "_id",
+        as: "status",
+      },
+    },
+    {
+      $unwind: {
+        path: "$status",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $ifNull: ["$status.title", "Fresh"],
+        },
+        count: {
+          $sum: 1,
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1,
+      },
+    },
+    {
+      $sort: {
+        count: -1,
+      },
+    },
+  ]);
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        all: totalLeads,
+        statusWise,
+      },
+      "Lead status statistics fetched successfully"
+    )
+  );
+});
+
+const getLeadStatusStats123 = asyncHandler(async (req, res) => {
+  const totalLeads = await Leads.countDocuments();
+
+  const statusWise = await Leads.aggregate([
+    {
+      $lookup: {
+        from: "leadstatuses",
+        localField: "status",
+        foreignField: "_id",
+        as: "status",
+      },
+    },
+    {
+      $unwind: {
+        path: "$status",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $ifNull: ["$status.title", "Fresh"],
+        },
+        count: {
+          $sum: 1,
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1,
+      },
+    },
+    {
+      $sort: {
+        count: -1,
+      },
+    },
+  ]);
+
+  // Add All Status
+  statusWise.unshift({
+    status: "All",
+    count: totalLeads,
+  });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      statusWise,
+      "Lead status statistics fetched successfully"
+    )
+  );
+});
+
+const getLeadStatusStats1234 = asyncHandler(async (req, res) => {
+  const totalLeads = await Leads.countDocuments();
+
+  const statusWise = await Leads.aggregate([
+    {
+      $lookup: {
+        from: "leadstatuses",
+        localField: "status",
+        foreignField: "_id",
+        as: "status",
+      },
+    },
+    {
+      $unwind: {
+        path: "$status",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $ifNull: ["$status.title", "Fresh"],
+        },
+        count: {
+          $sum: 1,
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1,
+      },
+    },
+    {
+      $sort: {
+        count: -1,
+      },
+    },
+  ]);
+
+  // Today's Updated Leads Count
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const recentCount = await Leads.countDocuments({
+    updatedAt: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // Add All
+  statusWise.unshift({
+    status: "All",
+    count: totalLeads,
+  });
+
+  // Add Recent
+  statusWise.splice(1, 0, {
+    status: "Recent",
+    count: recentCount,
+  });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      statusWise,
+      "Lead status statistics fetched successfully"
+    )
+  );
+});
+
+
+
+const getLeadStatusStats12345 = asyncHandler(async (req, res) => {
+  const totalLeads = await Leads.countDocuments();
+
+  const statusWise = await Leads.aggregate([
+    {
+      $lookup: {
+        from: "leadstatuses",
+        localField: "status",
+        foreignField: "_id",
+        as: "status",
+      },
+    },
+    {
+      $unwind: {
+        path: "$status",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $ifNull: ["$status.title", "Fresh"],
+        },
+        count: {
+          $sum: 1,
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1,
+      },
+    },
+    {
+      $sort: {
+        count: -1,
+      },
+    },
+  ]);
+
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Today's Updated Leads
+  const recentCount = await Leads.countDocuments({
+    updatedAt: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // Today's Follow Up Leads
+  const followUpTodayCount = await Leads.countDocuments({
+    followUpDate: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // Add All
+  statusWise.unshift({
+    status: "All",
+    count: totalLeads,
+  });
+
+  // Add Recent
+  statusWise.splice(1, 0, {
+    status: "Recent",
+    count: recentCount,
+  });
+
+  // Add Today Follow Up
+  statusWise.splice(2, 0, {
+    status: "Today Follow Up",
+    count: followUpTodayCount,
+  });
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      statusWise,
+      "Lead status statistics fetched successfully"
+    )
+  );
+});
+
+const getLeadStatusStats = asyncHandler(async (req, res) => {
+  // Total Leads
+  const totalLeads = await Leads.countDocuments();
+
+  // Status Wise Count
+  const statusWise = await Leads.aggregate([
+    {
+      $lookup: {
+        from: "leadstatuses",
+        localField: "status",
+        foreignField: "_id",
+        as: "status",
+      },
+    },
+    {
+      $unwind: {
+        path: "$status",
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $group: {
+        _id: {
+          $ifNull: ["$status.title", "Fresh"],
+        },
+        count: {
+          $sum: 1,
+        },
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        status: "$_id",
+        count: 1,
+      },
+    },
+    {
+      $sort: {
+        count: -1,
+      },
+    },
+  ]);
+
+  // Today Start & End
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // Recent (Updated Today)
+  const recentCount = await Leads.countDocuments({
+    updatedAt: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // Today's Follow Up
+  const followUpTodayCount = await Leads.countDocuments({
+    followUpDate: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // Pending Follow Up
+  // Follow-up date today se pehle ki ho
+  const pendingCount = await Leads.countDocuments({
+    followUpDate: {
+      $ne: null,
+      $lt: startOfDay,
+    },
+  });
+
+  // Add Custom Dashboard Stats
+  statusWise.unshift(
+    {
+      status: "All",
+      count: totalLeads,
+    },
+    {
+      status: "Recent",
+      count: recentCount,
+    },
+    {
+      status: "Follow Up",
+      count: followUpTodayCount,
+    },
+    {
+      status: "Pending",
+      count: pendingCount,
+    }
+  );
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      statusWise,
+      "Lead status statistics fetched successfully"
+    )
+  );
+});
+
+
 export {
   addLead,
   bulkAddLeads,
@@ -931,4 +1326,5 @@ export {
   updateStatus,
   transferSingleLead,
   getDashboardStats,
+  getLeadStatusStats
 };

@@ -52,81 +52,237 @@ const addLeadHistory = asyncHandler(async (req, res) => {
 
 const getAllLeadHistory = asyncHandler(async (req, res) => {
   const {
+    search,
     leadId,
     employeeId,
-    actionType,
+    performedBy,
+    action,
+    actionResult,
     status,
+    currentStatus,
     startDate,
     endDate,
     page = 1,
     limit = 10,
+    pagination = "true",
   } = req.query;
 
-  try {
-    const filter = {};
+  const filter = {};
 
-    // Filter by IDs
-    if (leadId && mongoose.isValidObjectId(leadId)) {
-      filter.leadId = mongoose.Types.ObjectId(leadId);
-    }
-
-    if (employeeId && mongoose.isValidObjectId(employeeId)) {
-      filter.employeeId = mongoose.Types.ObjectId(employeeId);
-    }
-
-    // String filters
-    if (actionType) filter.actionType = actionType;
-    if (status) filter.status = status;
-
-    // Date filter
-    if (startDate || endDate) {
-      filter.createdAt = {};
-      if (startDate) filter.createdAt.$gte = new Date(startDate);
-      if (endDate) filter.createdAt.$lte = new Date(endDate);
-    }
-
-    // Pagination values
-    const pageNumber = parseInt(page) || 1;
-    const limitNumber = parseInt(limit) || 10;
-    const skip = (pageNumber - 1) * limitNumber;
-
-    // Total records count
-    const totalRecords = await LeadHistory.countDocuments(filter);
-
-    // Fetch data with pagination
-    const histories = await LeadHistory.find(filter)
-      .populate("leadId", "name phone email")
-      .populate("employeeId", "name email phone")
-      .populate("performedBy", "name email phone")
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limitNumber);
-
-    return res.status(200).json(
-      new apiResponse(
-        200,
-        {
-          data: histories,
-          page: pageNumber,
-          limit: limitNumber,
-          totalRecords,
-          totalPages: Math.ceil(totalRecords / limitNumber),
-        },
-        "Lead history fetched successfully"
-      )
-    );
-  } catch (error) {
-    console.error("Error fetching lead history:", error);
-    return res
-      .status(500)
-      .json(
-        new apiResponse(
-          500,
-          null,
-          `Error fetching lead history: ${error.message}`
-        )
-      );
+  // Lead Filter
+  if (leadId && mongoose.Types.ObjectId.isValid(leadId)) {
+    filter.leadId = leadId;
   }
+
+  // Employee Filter
+  if (
+    employeeId &&
+    mongoose.Types.ObjectId.isValid(employeeId)
+  ) {
+    filter.employeeId = employeeId;
+  }
+
+  // Performed By Filter
+  if (
+    performedBy &&
+    mongoose.Types.ObjectId.isValid(performedBy)
+  ) {
+    filter.performedBy = performedBy;
+  }
+
+  // Action Filter
+  if (
+    action &&
+    mongoose.Types.ObjectId.isValid(action)
+  ) {
+    filter.action = action;
+  }
+
+  // Action Result Filter
+  if (
+    actionResult &&
+    mongoose.Types.ObjectId.isValid(actionResult)
+  ) {
+    filter.actionResult = actionResult;
+  }
+
+  // Status Filter
+  if (
+    status &&
+    mongoose.Types.ObjectId.isValid(status)
+  ) {
+    filter.status = status;
+  }
+
+  // Current Status Filter
+  if (currentStatus) {
+    filter.currentStatus = {
+      $regex: currentStatus,
+      $options: "i",
+    };
+  }
+
+  // Date Filter
+  if (startDate || endDate) {
+    filter.performedAt = {};
+
+    if (startDate) {
+      const from = new Date(startDate);
+      from.setHours(0, 0, 0, 0);
+      filter.performedAt.$gte = from;
+    }
+
+    if (endDate) {
+      const to = new Date(endDate);
+      to.setHours(23, 59, 59, 999);
+      filter.performedAt.$lte = to;
+    }
+  }
+
+  // Global Search
+  if (search) {
+    const words = search.trim().split(/\s+/);
+
+    const leadIds = await Leads.find({
+      $or: [
+        { name: { $regex: words.join("|"), $options: "i" } },
+        { phone: { $regex: words.join("|"), $options: "i" } },
+        { email: { $regex: words.join("|"), $options: "i" } },
+        { leadCode: { $regex: words.join("|"), $options: "i" } },
+      ],
+    }).distinct("_id");
+
+    const userIds = await User.find({
+      name: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    const actionIds = await LeadAction.find({
+      title: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    const actionResultIds =
+      await LeadActionResult.find({
+        title: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      }).distinct("_id");
+
+    const statusIds = await LeadStatus.find({
+      title: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    filter.$or = [
+      { comment: { $regex: words.join("|"), $options: "i" } },
+      { remark: { $regex: words.join("|"), $options: "i" } },
+      {
+        currentStatus: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      },
+
+      { leadId: { $in: leadIds } },
+
+      { employeeId: { $in: userIds } },
+
+      { performedBy: { $in: userIds } },
+
+      { action: { $in: actionIds } },
+
+      { prevAction: { $in: actionIds } },
+
+      { nextAction: { $in: actionIds } },
+
+      { actionResult: { $in: actionResultIds } },
+
+      { prevActionResult: { $in: actionResultIds } },
+
+      { status: { $in: statusIds } },
+
+      { prevStatus: { $in: statusIds } },
+    ];
+  }
+
+  const totalRecords =
+    await LeadHistory.countDocuments(filter);
+
+  let query = LeadHistory.find(filter)
+    .populate({
+      path: "leadId",
+      select:
+        "leadCode name phone email currentStatus",
+    })
+    .populate({
+      path: "employeeId",
+      select: "name email mobileNumber",
+    })
+    .populate({
+      path: "performedBy",
+      select: "name email mobileNumber",
+    })
+    .populate({
+      path: "action",
+      select: "title",
+    })
+    .populate({
+      path: "actionResult",
+      select: "title",
+    })
+    .populate({
+      path: "status",
+      select: "title",
+    })
+    .populate({
+      path: "prevAction",
+      select: "title",
+    })
+    .populate({
+      path: "prevActionResult",
+      select: "title",
+    })
+    .populate({
+      path: "prevStatus",
+      select: "title",
+    })
+    .populate({
+      path: "nextAction",
+      select: "title",
+    })
+    .sort({ performedAt: -1 });
+
+  if (pagination === "true") {
+    query = query
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+  }
+
+  const histories = await query;
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        histories,
+        totalRecords,
+        totalPages:
+          pagination === "true"
+            ? Math.ceil(totalRecords / limit)
+            : 1,
+        currentPage: Number(page),
+      },
+      "Lead history fetched successfully"
+    )
+  );
 });
 
 const getLeadHistoryById = asyncHandler(async (req, res) => {
@@ -165,38 +321,254 @@ const getLeadHistoryById = asyncHandler(async (req, res) => {
 const getLeadHistoryByLead = asyncHandler(async (req, res) => {
   const { leadId } = req.params;
 
-  try {
-    if (!mongoose.Types.ObjectId.isValid(leadId)) {
-      return res
-        .status(400)
-        .json(new apiResponse(400, null, "Invalid lead ID"));
-    }
+  const {
+    page = 1,
+    limit = 10,
+    pagination = "true",
+    search,
+    employeeId,
+    performedBy,
+    action,
+    actionResult,
+    status,
+    currentStatus,
+    startDate,
+    endDate,
+  } = req.query;
 
-    const histories = await LeadHistory.find({ leadId })
-      .populate("employeeId", "name email phone")
-      .populate("performedBy", "name email phone")
-      .sort({ createdAt: -1 });
-
-    res
-      .status(200)
+  if (!mongoose.Types.ObjectId.isValid(leadId)) {
+    return res
+      .status(400)
       .json(
         new apiResponse(
-          200,
-          histories,
-          "Lead history for this lead fetched successfully"
-        )
-      );
-  } catch (error) {
-    res
-      .status(500)
-      .json(
-        new apiResponse(
-          500,
+          400,
           null,
-          `Error fetching lead history: ${error.message}`
+          "Invalid lead ID"
         )
       );
   }
+
+  const filter = {
+    leadId,
+  };
+
+  // Employee Filter
+  if (
+    employeeId &&
+    mongoose.Types.ObjectId.isValid(employeeId)
+  ) {
+    filter.employeeId = employeeId;
+  }
+
+  // Performed By Filter
+  if (
+    performedBy &&
+    mongoose.Types.ObjectId.isValid(performedBy)
+  ) {
+    filter.performedBy = performedBy;
+  }
+
+  // Action Filter
+  if (
+    action &&
+    mongoose.Types.ObjectId.isValid(action)
+  ) {
+    filter.action = action;
+  }
+
+  // Action Result Filter
+  if (
+    actionResult &&
+    mongoose.Types.ObjectId.isValid(actionResult)
+  ) {
+    filter.actionResult = actionResult;
+  }
+
+  // Status Filter
+  if (
+    status &&
+    mongoose.Types.ObjectId.isValid(status)
+  ) {
+    filter.status = status;
+  }
+
+  // Current Status Filter
+  if (currentStatus) {
+    filter.currentStatus = {
+      $regex: currentStatus,
+      $options: "i",
+    };
+  }
+
+  // Date Filter
+  if (startDate || endDate) {
+    filter.performedAt = {};
+
+    if (startDate) {
+      const from = new Date(startDate);
+      from.setHours(0, 0, 0, 0);
+      filter.performedAt.$gte = from;
+    }
+
+    if (endDate) {
+      const to = new Date(endDate);
+      to.setHours(23, 59, 59, 999);
+      filter.performedAt.$lte = to;
+    }
+  }
+
+  // Global Search
+  if (search) {
+    const words = search.trim().split(/\s+/);
+
+    const userIds = await User.find({
+      name: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    const actionIds = await LeadAction.find({
+      title: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    const actionResultIds =
+      await LeadActionResult.find({
+        title: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      }).distinct("_id");
+
+    const statusIds = await LeadStatus.find({
+      title: {
+        $regex: words.join("|"),
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    filter.$or = [
+      {
+        comment: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        remark: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      },
+      {
+        currentStatus: {
+          $regex: words.join("|"),
+          $options: "i",
+        },
+      },
+
+      { employeeId: { $in: userIds } },
+      { performedBy: { $in: userIds } },
+
+      { action: { $in: actionIds } },
+      { prevAction: { $in: actionIds } },
+      { nextAction: { $in: actionIds } },
+
+      {
+        actionResult: {
+          $in: actionResultIds,
+        },
+      },
+      {
+        prevActionResult: {
+          $in: actionResultIds,
+        },
+      },
+
+      { status: { $in: statusIds } },
+      { prevStatus: { $in: statusIds } },
+    ];
+  }
+
+  const totalRecords =
+    await LeadHistory.countDocuments(filter);
+
+  let query = LeadHistory.find(filter)
+    .populate({
+      path: "leadId",
+      select:
+        "leadCode name phone email currentStatus platform leadDate",
+    })
+    .populate({
+      path: "employeeId",
+      select:
+        "name email mobileNumber role",
+    })
+    .populate({
+      path: "performedBy",
+      select:
+        "name email mobileNumber role",
+    })
+    .populate({
+      path: "action",
+      select: "title",
+    })
+    .populate({
+      path: "actionResult",
+      select: "title",
+    })
+    .populate({
+      path: "status",
+      select: "title",
+    })
+    .populate({
+      path: "prevAction",
+      select: "title",
+    })
+    .populate({
+      path: "prevActionResult",
+      select: "title",
+    })
+    .populate({
+      path: "prevStatus",
+      select: "title",
+    })
+    .populate({
+      path: "nextAction",
+      select: "title",
+    })
+    .sort({
+      performedAt: -1,
+    });
+
+  if (pagination === "true") {
+    query = query
+      .skip((page - 1) * limit)
+      .limit(Number(limit));
+  }
+
+  const histories = await query;
+
+  return res.status(200).json(
+    new apiResponse(
+      200,
+      {
+        histories,
+        totalRecords,
+        totalPages:
+          pagination === "true"
+            ? Math.ceil(
+              totalRecords / Number(limit)
+            )
+            : 1,
+        currentPage: Number(page),
+      },
+      "Lead history fetched successfully"
+    )
+  );
 });
 
 const deleteLeadHistory = asyncHandler(async (req, res) => {

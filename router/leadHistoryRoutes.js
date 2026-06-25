@@ -12,7 +12,7 @@ import { verifyJWT } from "../middlewares/authTypeMiddleware.js";
 const routes = Router();
 
 routes.route("/").post(verifyJWT, addLeadHistory);
-routes.route("/").get(verifyJWT, getAllLeadHistory);
+routes.route("/").get(getAllLeadHistory);
 routes.route("/:id").get(verifyJWT, getLeadHistoryById);
 routes.route("/:id").delete(verifyJWT, deleteLeadHistory);
 

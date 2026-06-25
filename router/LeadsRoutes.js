@@ -1,16 +1,17 @@
 import { Router } from "express";
 import {
-  addLead,
-  updateLead,
-  deleteLead,
-  getAllLeads,
-  getLeadById,
-  bulkAddLeads,
-  assignLeads,
-  getLeadCountByStatus,
-  updateStatus,
-  transferSingleLead,
-  getDashboardStats,
+   addLead,
+   updateLead,
+   deleteLead,
+   getAllLeads,
+   getLeadById,
+   bulkAddLeads,
+   assignLeads,
+   getLeadCountByStatus,
+   updateStatus,
+   transferSingleLead,
+   getDashboardStats,
+   getLeadStatusStats,
 } from "../controllers/LeadsController.js";
 
 import { verifyJWT } from "../middlewares/authTypeMiddleware.js";
@@ -24,6 +25,7 @@ const routes = Router();
 routes.route("/").post(verifyJWT, addLead).get(verifyJWT, getAllLeads);
 
 routes.route("/bulkAddLeads").post(verifyJWT, bulkAddLeads);
+routes.route("/getLeadStatusStats").get(getLeadStatusStats);
 
 routes.route("/assignLeads").post(verifyJWT, assignLeads);
 
@@ -31,7 +33,7 @@ routes.route("/assignLeads").post(verifyJWT, assignLeads);
    DASHBOARD / STATS
 ========================== */
 
-routes.route("/dashboard-stats").get(verifyJWT, getDashboardStats);
+routes.route("/dashboard-stats").get(verifyJWT, getLeadStatusStats);
 
 routes.route("/getLeadCountByStatus").get(verifyJWT, getLeadCountByStatus);
 
@@ -48,9 +50,9 @@ routes.route("/updateStatus/:id").patch(verifyJWT, updateStatus);
 ========================== */
 
 routes
-  .route("/:id")
-  .get(verifyJWT, getLeadById)
-  .patch(verifyJWT, updateLead)
-  .delete(verifyJWT, deleteLead);
+   .route("/:id")
+   .get(verifyJWT, getLeadById)
+   .patch(verifyJWT, updateLead)
+   .delete(verifyJWT, deleteLead);
 
 export default routes;
