@@ -1,5 +1,6 @@
 import Leads from "../models/Leads.modal.js";
 import LeadHistory from "../models/LeadHistory.model.js";
+import LeadStatus from "../models/LeadStatus.modal.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
 import mongoose from "mongoose";
@@ -355,9 +356,64 @@ const getAllLeads = asyncHandler(async (req, res) => {
     platformId,
     currentStatus,
     assigned = "all",
+    dashboardStatus = "All",
   } = req.query;
 
   const query = {};
+
+
+
+  // Dashboard Status Filter
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  if (dashboardStatus === "Recent") {
+    query.updatedAt = {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    };
+  }
+
+  else if (dashboardStatus === "Follow Up") {
+    query.followUpDate = {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    };
+  }
+
+  else if (dashboardStatus === "Pending") {
+    query.followUpDate = {
+      $ne: null,
+      $lt: startOfDay,
+    };
+  }
+
+  else if (dashboardStatus === "Fresh") {
+    query.status = null;
+  }
+
+  else if (
+    dashboardStatus !== "All" &&
+    !["Recent", "Follow Up", "Pending", "Fresh"].includes(
+      dashboardStatus
+    )
+  ) {
+    const statusIds = await LeadStatus.find({
+      title: {
+        $regex: `^${dashboardStatus}$`,
+        $options: "i",
+      },
+    }).distinct("_id");
+
+    if (statusIds.length) {
+      query.status = { $in: statusIds };
+    } else {
+      query._id = null;
+    }
+  }
 
   // Search
   if (search) {
@@ -1113,8 +1169,6 @@ const getLeadStatusStats1234 = asyncHandler(async (req, res) => {
     )
   );
 });
-
-
 
 const getLeadStatusStats12345 = asyncHandler(async (req, res) => {
   const totalLeads = await Leads.countDocuments();
