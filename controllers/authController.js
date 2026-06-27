@@ -99,7 +99,9 @@ const registerUser = asyncHandler(async (req, res) => {
     password,
     name,
     gender = "Male",
-    role = "User",
+    role = "Telecaller",
+    dob,
+    address,
     email,
   } = req.body;
 
@@ -154,6 +156,8 @@ const registerUser = asyncHandler(async (req, res) => {
     name,
     gender,
     role,
+    dob,
+    address,
     email,
     isNew: false,
   });
