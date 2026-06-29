@@ -50,18 +50,7 @@ const addLead = asyncHandler(async (req, res) => {
       status,
     });
 
-    const historyData = {
-      leadId: newLead._id,
-      employeeId: newLead.assignTo || null,
-      actionType: newLead.assignTo ? "Lead Added & Assigned" : "Lead Added",
-      previousStatus: null,
-      status: newLead.status || "Fresh",
-      comment: null,
-      performedBy: req.user?._id || null,
-      performedAt: new Date(),
-    };
 
-    await LeadHistory.create(historyData);
 
     res
       .status(201)
@@ -307,17 +296,7 @@ const deleteLead = asyncHandler(async (req, res) => {
       return res.status(404).json(new apiResponse(404, null, "Lead not found"));
     }
 
-    // Log deletion in history before deleting
-    await LeadHistory.create({
-      leadId: lead._id,
-      employeeId: lead.assignTo || null,
-      actionType: "Lead Deleted",
-      previousStatus: lead.status,
-      status: "Deleted",
-      comment: "Lead was deleted from system",
-      performedBy: req.user?._id || null,
-      performedAt: new Date(),
-    });
+
 
     await Leads.findByIdAndDelete(id);
 
@@ -1512,3 +1491,4 @@ export {
   getDashboardStats,
   getLeadStatusStats,
 };
+
