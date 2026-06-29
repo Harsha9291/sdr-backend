@@ -1,5 +1,7 @@
 import Leads from "../models/Leads.modal.js";
 import LeadHistory from "../models/LeadHistory.model.js";
+import LeadAction from "../models/LeadAction.modal.js";
+import User from "../models/User.modal.js";
 import LeadStatus from "../models/LeadStatus.modal.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
@@ -241,9 +243,7 @@ const updateStatus = asyncHandler(async (req, res) => {
   const lead = await Leads.findById(id);
 
   if (!lead) {
-    return res
-      .status(404)
-      .json(new apiResponse(404, null, "Lead not found"));
+    return res.status(404).json(new apiResponse(404, null, "Lead not found"));
   }
 
   const previousStatus = lead.status;
@@ -257,17 +257,13 @@ const updateStatus = asyncHandler(async (req, res) => {
   if (actionResult) lead.actionResult = actionResult;
   if (currentStatus) lead.currentStatus = currentStatus;
 
-  if (siteVisitDate !== undefined)
-    lead.siteVisitDate = siteVisitDate;
+  if (siteVisitDate !== undefined) lead.siteVisitDate = siteVisitDate;
 
-  if (followUpDate !== undefined)
-    lead.followUpDate = followUpDate;
+  if (followUpDate !== undefined) lead.followUpDate = followUpDate;
 
-  if (followUpTime !== undefined)
-    lead.followUpTime = followUpTime;
+  if (followUpTime !== undefined) lead.followUpTime = followUpTime;
 
-  if (remark !== undefined)
-    lead.remark = remark;
+  if (remark !== undefined) lead.remark = remark;
 
   await lead.save();
 
@@ -297,13 +293,9 @@ const updateStatus = asyncHandler(async (req, res) => {
     performedAt: new Date(),
   });
 
-  return res.status(200).json(
-    new apiResponse(
-      200,
-      lead,
-      "Lead status updated successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(new apiResponse(200, lead, "Lead status updated successfully"));
 });
 
 const deleteLead = asyncHandler(async (req, res) => {
@@ -361,8 +353,6 @@ const getAllLeads = asyncHandler(async (req, res) => {
 
   const query = {};
 
-
-
   // Dashboard Status Filter
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -375,31 +365,21 @@ const getAllLeads = asyncHandler(async (req, res) => {
       $gte: startOfDay,
       $lte: endOfDay,
     };
-  }
-
-  else if (dashboardStatus === "Follow Up") {
+  } else if (dashboardStatus === "Follow Up") {
     query.followUpDate = {
       $gte: startOfDay,
       $lte: endOfDay,
     };
-  }
-
-  else if (dashboardStatus === "Pending") {
+  } else if (dashboardStatus === "Pending") {
     query.followUpDate = {
       $ne: null,
       $lt: startOfDay,
     };
-  }
-
-  else if (dashboardStatus === "Fresh") {
+  } else if (dashboardStatus === "Fresh") {
     query.status = null;
-  }
-
-  else if (
+  } else if (
     dashboardStatus !== "All" &&
-    !["Recent", "Follow Up", "Pending", "Fresh"].includes(
-      dashboardStatus
-    )
+    !["Recent", "Follow Up", "Pending", "Fresh"].includes(dashboardStatus)
   ) {
     const statusIds = await LeadStatus.find({
       title: {
@@ -516,26 +496,17 @@ const getAllLeads = asyncHandler(async (req, res) => {
   }
 
   // Assign To Filter
-  if (
-    assignTo &&
-    mongoose.Types.ObjectId.isValid(assignTo)
-  ) {
+  if (assignTo && mongoose.Types.ObjectId.isValid(assignTo)) {
     query.assignTo = assignTo;
   }
 
   // Status Filter
-  if (
-    status &&
-    mongoose.Types.ObjectId.isValid(status)
-  ) {
+  if (status && mongoose.Types.ObjectId.isValid(status)) {
     query.status = status;
   }
 
   // Action Filter
-  if (
-    action &&
-    mongoose.Types.ObjectId.isValid(action)
-  ) {
+  if (action && mongoose.Types.ObjectId.isValid(action)) {
     query.action = action;
   }
 
@@ -625,13 +596,11 @@ const getAllLeads = asyncHandler(async (req, res) => {
         leads,
         totalLeads,
         totalPages:
-          isPagination === "true"
-            ? Math.ceil(totalLeads / Number(limit))
-            : 1,
+          isPagination === "true" ? Math.ceil(totalLeads / Number(limit)) : 1,
         currentPage: Number(page),
       },
-      "Leads fetched successfully"
-    )
+      "Leads fetched successfully",
+    ),
   );
 });
 
@@ -978,8 +947,6 @@ const getDashboardStats = asyncHandler(async (req, res) => {
   }
 });
 
-
-
 const getLeadStatusStats12 = asyncHandler(async (req, res) => {
   // Total Leads
   const totalLeads = await Leads.countDocuments();
@@ -1031,8 +998,8 @@ const getLeadStatusStats12 = asyncHandler(async (req, res) => {
         all: totalLeads,
         statusWise,
       },
-      "Lead status statistics fetched successfully"
-    )
+      "Lead status statistics fetched successfully",
+    ),
   );
 });
 
@@ -1084,13 +1051,15 @@ const getLeadStatusStats123 = asyncHandler(async (req, res) => {
     count: totalLeads,
   });
 
-  return res.status(200).json(
-    new apiResponse(
-      200,
-      statusWise,
-      "Lead status statistics fetched successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        statusWise,
+        "Lead status statistics fetched successfully",
+      ),
+    );
 });
 
 const getLeadStatusStats1234 = asyncHandler(async (req, res) => {
@@ -1161,13 +1130,15 @@ const getLeadStatusStats1234 = asyncHandler(async (req, res) => {
     count: recentCount,
   });
 
-  return res.status(200).json(
-    new apiResponse(
-      200,
-      statusWise,
-      "Lead status statistics fetched successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        statusWise,
+        "Lead status statistics fetched successfully",
+      ),
+    );
 });
 
 const getLeadStatusStats12345 = asyncHandler(async (req, res) => {
@@ -1252,13 +1223,15 @@ const getLeadStatusStats12345 = asyncHandler(async (req, res) => {
     count: followUpTodayCount,
   });
 
-  return res.status(200).json(
-    new apiResponse(
-      200,
-      statusWise,
-      "Lead status statistics fetched successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        statusWise,
+        "Lead status statistics fetched successfully",
+      ),
+    );
 });
 
 const getLeadStatusStats = asyncHandler(async (req, res) => {
@@ -1354,18 +1327,19 @@ const getLeadStatusStats = asyncHandler(async (req, res) => {
     {
       status: "Pending",
       count: pendingCount,
-    }
+    },
   );
 
-  return res.status(200).json(
-    new apiResponse(
-      200,
-      statusWise,
-      "Lead status statistics fetched successfully"
-    )
-  );
+  return res
+    .status(200)
+    .json(
+      new apiResponse(
+        200,
+        statusWise,
+        "Lead status statistics fetched successfully",
+      ),
+    );
 });
-
 
 export {
   addLead,
@@ -1380,5 +1354,5 @@ export {
   updateStatus,
   transferSingleLead,
   getDashboardStats,
-  getLeadStatusStats
+  getLeadStatusStats,
 };
