@@ -367,7 +367,6 @@ const getAllUsers = asyncHandler(async (req, res) => {
   /* ================= HIDE SENSITIVE FIELDS ================= */
   pipeline.push({
     $project: {
-      password: 0,
       otp: 0,
       otpExpiration: 0,
     },

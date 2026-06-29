@@ -22,10 +22,10 @@ const routes = Router();
    LEADS
 ========================== */
 
-routes.route("/").post(verifyJWT, addLead).get(getAllLeads);
+routes.route("/").post(verifyJWT, addLead).get(verifyJWT, getAllLeads);
 
 routes.route("/bulkAddLeads").post(verifyJWT, bulkAddLeads);
-routes.route("/getLeadStatusStats").get(getLeadStatusStats);
+routes.route("/getLeadStatusStats").get(verifyJWT, getLeadStatusStats);
 
 routes.route("/assignLeads").post(verifyJWT, assignLeads);
 

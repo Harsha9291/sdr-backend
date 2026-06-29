@@ -353,6 +353,10 @@ const getAllLeads = asyncHandler(async (req, res) => {
 
   const query = {};
 
+  if (req.user.role !== "Admin") {
+    query.assignTo = req.user._id;
+  }
+
   // Dashboard Status Filter
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -495,8 +499,11 @@ const getAllLeads = asyncHandler(async (req, res) => {
     }
   }
 
-  // Assign To Filter
-  if (assignTo && mongoose.Types.ObjectId.isValid(assignTo)) {
+  if (
+    req.user.role === "Admin" &&
+    assignTo &&
+    mongoose.Types.ObjectId.isValid(assignTo)
+  ) {
     query.assignTo = assignTo;
   }
 
@@ -524,12 +531,14 @@ const getAllLeads = asyncHandler(async (req, res) => {
   }
 
   // Assigned / Unassigned Filter
-  if (assigned === "yes") {
-    query.assignTo = { $ne: null };
-  }
+  if (req.user.role === "Admin") {
+    if (assigned === "yes") {
+      query.assignTo = { $ne: null };
+    }
 
-  if (assigned === "no") {
-    query.assignTo = null;
+    if (assigned === "no") {
+      query.assignTo = null;
+    }
   }
 
   // Sorting
@@ -621,7 +630,7 @@ const getLeadById = asyncHandler(async (req, res) => {
   res.status(200).json(new apiResponse(200, lead, "Lead fetched successfully"));
 });
 
-const assignLeads = asyncHandler(async (req, res) => {
+const assignLeads12 = asyncHandler(async (req, res) => {
   const { type, employeeId, employeeIds, leadIds } = req.body;
 
   if (!type || !["manual", "auto"].includes(type)) {
@@ -716,6 +725,142 @@ const assignLeads = asyncHandler(async (req, res) => {
           `Leads assigned automatically (round-robin) to selected employees`,
         ),
       );
+  }
+});
+
+const assignLeads = asyncHandler(async (req, res) => {
+  const { type, employeeId, employeeIds, leadIds } = req.body;
+
+  if (!type || !["manual", "auto"].includes(type)) {
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "Invalid assignment type"));
+  }
+
+  // ===========================
+  // Manual Assignment
+  // ===========================
+  if (type === "manual") {
+    if (!employeeId || !mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "Valid employeeId is required"));
+    }
+
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "Lead IDs are required"));
+    }
+
+    // Get existing lead data
+    const leads = await Leads.find({
+      _id: { $in: leadIds },
+    });
+
+    // Update assignment
+    const updatedLeads = await Leads.updateMany(
+      { _id: { $in: leadIds } },
+      {
+        $set: {
+          assignTo: employeeId,
+        },
+      }
+    );
+
+    // History
+    const historyLogs = leads.map((lead) => ({
+      leadId: lead._id,
+      employeeId,
+      action: lead.action,
+      actionResult: lead.actionResult,
+      status: lead.status,
+      prevAction: lead.prevAction,
+      prevActionResult: lead.prevActionResult,
+      prevStatus: lead.prevStatus,
+      nextAction: lead.nextAction,
+      currentStatus: lead.currentStatus,
+      siteVisitDate: lead.siteVisitDate,
+      followUpDate: lead.followUpDate,
+      followUpTime: lead.followUpTime,
+      remark: lead.remark,
+      comment: `Lead assigned to employee`,
+      performedBy: req.user._id,
+      performedAt: new Date(),
+    }));
+
+    await LeadHistory.insertMany(historyLogs);
+
+    return res.status(200).json(
+      new apiResponse(
+        200,
+        updatedLeads,
+        "Leads assigned manually successfully"
+      )
+    );
+  }
+
+  // ===========================
+  // Auto Assignment
+  // ===========================
+  if (type === "auto") {
+    if (!Array.isArray(employeeIds) || employeeIds.length === 0) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "Employee IDs are required"));
+    }
+
+    if (!Array.isArray(leadIds) || leadIds.length === 0) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "Lead IDs are required"));
+    }
+
+    const leads = await Leads.find({
+      _id: { $in: leadIds },
+    });
+
+    const updates = leadIds.map((leadId, index) => ({
+      updateOne: {
+        filter: { _id: leadId },
+        update: {
+          assignTo: employeeIds[index % employeeIds.length],
+        },
+      },
+    }));
+
+    const result = await Leads.bulkWrite(updates);
+
+    // History
+    const historyLogs = leads.map((lead, index) => ({
+      leadId: lead._id,
+      employeeId: employeeIds[index % employeeIds.length],
+      action: lead.action,
+      actionResult: lead.actionResult,
+      status: lead.status,
+      prevAction: lead.prevAction,
+      prevActionResult: lead.prevActionResult,
+      prevStatus: lead.prevStatus,
+      nextAction: lead.nextAction,
+      currentStatus: lead.currentStatus,
+      siteVisitDate: lead.siteVisitDate,
+      followUpDate: lead.followUpDate,
+      followUpTime: lead.followUpTime,
+      remark: lead.remark,
+      comment: "Lead auto assigned",
+      performedBy: req.user._id,
+      performedAt: new Date(),
+    }));
+
+    await LeadHistory.insertMany(historyLogs);
+
+    return res.status(200).json(
+      new apiResponse(
+        200,
+        result,
+        "Leads assigned automatically successfully"
+      )
+    );
   }
 });
 
@@ -1236,10 +1381,18 @@ const getLeadStatusStats12345 = asyncHandler(async (req, res) => {
 
 const getLeadStatusStats = asyncHandler(async (req, res) => {
   // Total Leads
-  const totalLeads = await Leads.countDocuments();
+  const assignedFilter = {
+    assignTo: req.user._id,
+  };
+
+
+  const totalLeads = await Leads.countDocuments(assignedFilter);
 
   // Status Wise Count
   const statusWise = await Leads.aggregate([
+    {
+      $match: assignedFilter,
+    },
     {
       $lookup: {
         from: "leadstatuses",
@@ -1287,6 +1440,7 @@ const getLeadStatusStats = asyncHandler(async (req, res) => {
 
   // Recent (Updated Today)
   const recentCount = await Leads.countDocuments({
+    ...assignedFilter,
     updatedAt: {
       $gte: startOfDay,
       $lte: endOfDay,
@@ -1295,6 +1449,7 @@ const getLeadStatusStats = asyncHandler(async (req, res) => {
 
   // Today's Follow Up
   const followUpTodayCount = await Leads.countDocuments({
+    ...assignedFilter,
     followUpDate: {
       $gte: startOfDay,
       $lte: endOfDay,
@@ -1304,6 +1459,7 @@ const getLeadStatusStats = asyncHandler(async (req, res) => {
   // Pending Follow Up
   // Follow-up date today se pehle ki ho
   const pendingCount = await Leads.countDocuments({
+    ...assignedFilter,
     followUpDate: {
       $ne: null,
       $lt: startOfDay,
