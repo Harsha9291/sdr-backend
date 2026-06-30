@@ -575,7 +575,30 @@ const getAllLeads = asyncHandler(async (req, res) => {
       .limit(Number(limit));
   }
 
-  const leads = await leadQuery;
+  const leadsData = await leadQuery;
+
+  const platformIds = [
+    ...new Set(leadsData.map((lead) => lead.platform).filter(Boolean)),
+  ];
+
+  const platforms = await Platform.find({
+    PlatformId: { $in: platformIds },
+  }).select("title PlatformId");
+
+  const platformMap = {};
+  platforms.forEach((platform) => {
+    platformMap[platform.PlatformId] = platform;
+  });
+
+
+  const leads = leadsData.map((lead) => {
+    const obj = lead.toObject();
+
+    obj.platformData = platformMap[obj.platform] || null;
+
+    return obj;
+  });
+
 
   res.status(200).json(
     new apiResponse(
