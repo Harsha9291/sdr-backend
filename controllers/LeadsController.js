@@ -2,6 +2,7 @@ import Leads from "../models/Leads.modal.js";
 import LeadHistory from "../models/LeadHistory.model.js";
 import LeadAction from "../models/LeadAction.modal.js";
 import User from "../models/User.modal.js";
+import Platform from "../models/Platform.modal.js";
 import LeadStatus from "../models/LeadStatus.modal.js";
 import { apiResponse } from "../utils/apiResponse.js";
 import { asyncHandler } from "../utils/asynchandler.js";
@@ -576,12 +577,24 @@ const getAllLeads = asyncHandler(async (req, res) => {
   }
 
   const leads = await leadQuery;
+const platforms = await Platform.find().select("title PlatformId");
 
+const leadsWithPlatform = leads.map((lead) => {
+  const leadObj = lead.toObject();
+
+  leadObj.platform = platforms.find(
+    (p) => p.PlatformId === lead.platform
+  ) || null;
+
+  return leadObj;
+});
   res.status(200).json(
     new apiResponse(
       200,
       {
-        leads,
+        // leads,
+              leads: leadsWithPlatform,
+
         totalLeads,
         totalPages:
           isPagination === "true" ? Math.ceil(totalLeads / Number(limit)) : 1,
