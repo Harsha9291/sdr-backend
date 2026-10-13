@@ -272,20 +272,33 @@ const updateUserById = asyncHandler(async (req, res) => {
   if (!user)
     return res.status(404).json(new apiResponse(404, null, "User not found"));
 
-  // Update only allowed fields
-  Object.keys(req.body).forEach((key) => {
-    user[key] = req.body[key];
-  });
+  const {
+    name, phone, email, gender, dob, address,
+    isBlock, userId, password,
+  } = req.body;
 
-  // Handle driver intent
-  if (req.body.wantsToBeDriver) {
-    // Only set to Initiated if current status is None
-    if (
-      !user.driverApplicationStatus ||
-      user.driverApplicationStatus === "None"
-    ) {
-      user.driverApplicationStatus = "Initiated"; // User wants to become driver
+  // userId uniqueness check (if being changed)
+  if (userId && userId !== user.userId) {
+    const existing = await User.findOne({ userId, _id: { $ne: id } });
+    if (existing) {
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, `User ID "${userId}" is already taken`));
     }
+    user.userId = userId;
+  }
+
+  if (name !== undefined) user.name = name;
+  if (phone !== undefined) user.phone = phone;
+  if (email !== undefined) user.email = email;
+  if (gender !== undefined) user.gender = gender;
+  if (dob !== undefined) user.dob = dob;
+  if (address !== undefined) user.address = address;
+  if (isBlock !== undefined) user.isBlock = isBlock;
+
+  // Only update password if a non-empty value is sent
+  if (password && password.trim() !== "") {
+    user.password = password;
   }
 
   user.isNew = false;

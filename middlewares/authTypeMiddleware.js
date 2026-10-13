@@ -22,10 +22,16 @@ export const verifyJWT = asyncHandler(async (req, res, next) => {
     
     // Find the user associated with the token
     const user = await User.findById(decodedToken?.userId)
-    .select("-password -authToken"); // Don't return sensitive fields like password and authToken
+    .select("-authToken"); // Don't return sensitive fields
    
     if (!user) {
       apiError(res, 401, false, "Invalid access token: User not found");
+      return;
+    }
+
+    // Block suspended users from performing any action
+    if (user.isBlock) {
+      apiError(res, 403, false, "Your account has been suspended. Please contact the administrator.");
       return;
     }
 

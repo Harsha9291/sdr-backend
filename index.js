@@ -14,6 +14,9 @@ import { startExcelSyncCron } from "./utils/cronJobs.js";
 import excelSyncRoutes from "./router/excelSyncRoutes.js";
 import intigrationRoutes from "./router/IntegrationRoutes.js";
 import dashboardRoutes from "./router/dashboardRoutes.js";
+import productCategoryRoutes from "./router/ProductCategoryRoutes.js";
+import productRoutes from "./router/ProductRoutes.js";
+import stockRoutes from "./router/StockRoutes.js";
 
 dotenv.config();
 
@@ -41,6 +44,11 @@ app.use("/api/leadStatus", leadStatusRoutes);
 app.use("/api/excel", excelSyncRoutes);
 app.use("/api/intigration", intigrationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+
+// Product Management
+app.use("/api/product-category", productCategoryRoutes);
+app.use("/api/product", productRoutes);
+app.use("/api/stock", stockRoutes);
 
 const PORT = process.env.PORT || 5000;
 

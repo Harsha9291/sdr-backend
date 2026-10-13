@@ -19,6 +19,7 @@ routes.post("/createPassword", createPassword);
 routes.post("/updatePassword", verifyJWT, updatePassword);
 routes.put("/updateRoll/:userId", updateUserRoll);
 routes.put("/blockUser/:userId", verifyJWT, blockUser);
+routes.patch("/suspend/:id", verifyJWT, blockUser); // quick toggle without separate controller
 
 routes.get("/user/:userId", getUserById);
 
