@@ -283,6 +283,75 @@ const updateStatus = asyncHandler(async (req, res) => {
     performedAt: new Date(),
   });
 
+  // 🔥 Schedule notifications if follow-up date and time are provided
+  if (followUpDate && followUpTime && nextAction) {
+    try {
+      console.log(`📅 [UpdateStatus] Scheduling notifications for lead: ${id}`);
+
+      // Import scheduler here to avoid circular dependencies
+      const { scheduleLeadNotifications } = await import(
+        "../services/notificationScheduler.js"
+      );
+      
+      // Import notification creator
+      const { createNotification } = await import(
+        "../controllers/userNotificationController.js"
+      );
+
+      // Fetch the action title from LeadAction model
+      const LeadActionModel = await import("../models/LeadAction.modal.js").then(m => m.default);
+      let actionTitle = "Action";
+      try {
+        const actionData = await LeadActionModel.findById(nextAction);
+        if (actionData) {
+          actionTitle = actionData.title || "Action";
+        }
+      } catch (error) {
+        console.warn(`⚠️ Could not fetch action title:`, error.message);
+      }
+
+      // Combine followUpDate and followUpTime
+      const [hours, minutes] = followUpTime.split(":").map(Number);
+      const scheduledDateTime = new Date(followUpDate);
+      scheduledDateTime.setHours(hours, minutes, 0, 0);
+
+      // Get the assigned user ID
+      const assignedUserId = lead.assignTo;
+      if (assignedUserId) {
+        // 🔥 Create initial notification in database
+        try {
+          await createNotification({
+            userId: assignedUserId,
+            title: `📅 Follow-up Scheduled: ${actionTitle}`,
+            message: `Lead follow-up scheduled for ${followUpDate} at ${followUpTime}. Action: ${actionTitle}`,
+            type: "Reminder",
+            data: {
+              leadId: String(id),
+              actionType: "scheduled",
+              actionTitle: actionTitle,
+              scheduledDateTime: scheduledDateTime.toISOString(),
+            },
+          });
+          console.log(`✅ Initial notification created for lead: ${id}`);
+        } catch (notifError) {
+          console.error(`❌ Error creating initial notification:`, notifError.message);
+        }
+
+        // Schedule the reminders with action title
+        await scheduleLeadNotifications(
+          id,
+          assignedUserId,
+          scheduledDateTime,
+          nextAction
+        );
+        console.log(`✅ Notifications scheduled for lead: ${id}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error scheduling notifications:`, error.message);
+      // Don't fail the request if notification scheduling fails
+    }
+  }
+
   return res
     .status(200)
     .json(new apiResponse(200, lead, "Lead status updated successfully"));

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { blockUser, createPassword, deleteUser, getAllUsers, getProfile, getUserById, loginWithPassword, registerOrLogin, registerUser, resendOtp, sendOtp, updatePassword, updateUserById, updateUserRoll, verifyOtp } from "../controllers/authController.js";
+import { blockUser, createPassword, deleteUser, getAllUsers, getProfile, getUserById, loginWithPassword, registerOrLogin, registerUser, resendOtp, sendOtp, updatePassword, updateUserById, updateUserRoll, verifyOtp, updateFCMToken } from "../controllers/authController.js";
 import { verifyJWT } from "../middlewares/authTypeMiddleware.js";
 import { ipWhitelist } from "../middlewares/ipWhitelist.js";
 
@@ -36,6 +36,7 @@ routes.post("/registerUser",    registerUser);
 routes.post("/sendOtp",         sendOtp);
 routes.post("/resendOtp",       resendOtp);
 routes.patch("/update/:id",     updateUserById);
+routes.patch("/updateFCMToken", verifyJWT, updateFCMToken);
 routes.delete("/delete/:id",    verifyJWT, deleteUser);
 routes.get("/getAllUsers",       getAllUsers);
 routes.get("/profile",          verifyJWT, getProfile);

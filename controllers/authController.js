@@ -185,13 +185,19 @@ const registerUser = asyncHandler(async (req, res) => {
 });
 
 const verifyOtp = asyncHandler(async (req, res) => {
-  const { phone, otp } = req.body;
+  const { phone, otp, fcmToken } = req.body;
 
   const user = await User.findOne({ phone });
   if (!user)
     return res.status(400).json(new apiResponse(400, null, "User not found"));
   if (user.otp !== otp)
     return res.status(400).json(new apiResponse(400, null, "Invalid OTP"));
+
+  // 🔹 Save FCM token if provided
+  if (fcmToken) {
+    user.fcmToken = fcmToken;
+    await user.save();
+  }
 
   const token = user.generateAuthToken();
 
@@ -206,8 +212,9 @@ const verifyOtp = asyncHandler(async (req, res) => {
         email: user.email,
         gender: user.gender,
         upgradedId: user.upgradedId,
-        driverApplicationStatus: user.driverApplicationStatus, // ⭐ ADD
+        driverApplicationStatus: user.driverApplicationStatus,
         isNew: user.isNew,
+        fcmToken: user.fcmToken,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
         authToken: token,
@@ -437,7 +444,7 @@ const getProfile = async (req, res) => {
 };
 
 const loginWithPassword = asyncHandler(async (req, res) => {
-  const { userId, password } = req.body;
+  const { userId, password, fcmToken } = req.body;
 
   if (!userId || !password) {
     return res
@@ -448,8 +455,6 @@ const loginWithPassword = asyncHandler(async (req, res) => {
   try {
     // 🔹 Find user by userId
     const existingUser = await User.findOne({ userId });
-
-
 
     if (!existingUser) {
       return res.status(400).json(new apiResponse(400, null, "User not found"));
@@ -479,6 +484,12 @@ const loginWithPassword = asyncHandler(async (req, res) => {
         .json(new apiResponse(400, null, "Invalid password"));
     }
 
+    // 🔹 Save FCM token if provided
+    if (fcmToken) {
+      existingUser.fcmToken = fcmToken;
+      await existingUser.save();
+    }
+
     // 🔹 Generate JWT
     const token = existingUser.generateAuthToken();
 
@@ -491,6 +502,7 @@ const loginWithPassword = asyncHandler(async (req, res) => {
       email: existingUser.email,
       gender: existingUser.gender,
       isNew: existingUser.isNew,
+      fcmToken: existingUser.fcmToken,
       createdAt: existingUser.createdAt,
       updatedAt: existingUser.updatedAt,
       authToken: token,
@@ -687,6 +699,33 @@ const blockUser = asyncHandler(async (req, res) => {
   );
 });
 
+const updateFCMToken = asyncHandler(async (req, res) => {
+  const { fcmToken } = req.body;
+  const userId = req.user._id;
+
+  if (!fcmToken) {
+    return res.status(400).json(
+      new apiResponse(400, null, "FCM token is required")
+    );
+  }
+
+  const user = await User.findByIdAndUpdate(
+    userId,
+    { fcmToken },
+    { new: true }
+  );
+
+  if (!user) {
+    return res.status(404).json(
+      new apiResponse(404, null, "User not found")
+    );
+  }
+
+  return res.status(200).json(
+    new apiResponse(200, { fcmToken: user.fcmToken }, "FCM token updated successfully")
+  );
+});
+
 
 export {
   registerOrLogin,
@@ -704,5 +743,6 @@ export {
   deleteUser,
   getUserById,
   registerUser,
-  blockUser
+  blockUser,
+  updateFCMToken
 };

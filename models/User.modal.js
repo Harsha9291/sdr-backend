@@ -24,7 +24,10 @@ const UserSchema = new mongoose.Schema(
     },
     isBlock: {
       type: Boolean,
-      default: false
+      default: false,
+    },
+    fcmToken: {
+      type: String,
     },
 
     role: {
@@ -47,9 +50,6 @@ const UserSchema = new mongoose.Schema(
       trim: true,
     },
     password: {
-      type: String,
-    },
-    fcmToken: {
       type: String,
     },
   },

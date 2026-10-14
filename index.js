@@ -17,6 +17,9 @@ import dashboardRoutes from "./router/dashboardRoutes.js";
 import productCategoryRoutes from "./router/ProductCategoryRoutes.js";
 import productRoutes from "./router/ProductRoutes.js";
 import stockRoutes from "./router/StockRoutes.js";
+import notificationRoutes from "./router/notificationRoutes.js";
+import userNotificationRoutes from "./router/userNotificationRoutes.js";
+import testRoutes from "./router/testRoutes.js";
 
 dotenv.config();
 
@@ -44,6 +47,9 @@ app.use("/api/leadStatus", leadStatusRoutes);
 app.use("/api/excel", excelSyncRoutes);
 app.use("/api/intigration", intigrationRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/user-notifications", userNotificationRoutes);
+app.use("/api/test", testRoutes);
 
 // Product Management
 app.use("/api/product-category", productCategoryRoutes);
