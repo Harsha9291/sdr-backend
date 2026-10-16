@@ -62,4 +62,10 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   connectDB();
   startExcelSyncCron();
+  
+  // Start notification service
+  (async () => {
+    const { startNotificationService } = await import('./services/notificationService.js');
+    startNotificationService();
+  })();
 });

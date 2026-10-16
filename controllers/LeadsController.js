@@ -216,209 +216,66 @@ const updateLead = asyncHandler(async (req, res) => {
 
 const updateStatus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-
-  const {
-    action,
-    actionResult,
-    status,
-    currentStatus,
-    nextAction,
-    siteVisitDate,
-    followUpDate,
-    followUpTime,
-    remark,
-    comment,
-  } = req.body;
+  const { followUpDate, followUpTime, ...rest } = req.body;
 
   const lead = await Leads.findById(id);
+  if (!lead) return res.status(404).json(new apiResponse(404, null, "Lead not found"));
 
-  if (!lead) {
-    return res.status(404).json(new apiResponse(404, null, "Lead not found"));
-  }
-
-  const previousStatus = lead.status;
-  const previousAction = lead.action;
-  const prevActionResult = lead.actionResult;
-  const previousCurrentStatus = lead.currentStatus;
-
-  // Update only provided fields
-  if (status) lead.status = status;
-  if (action) lead.action = action;
-  if (actionResult) lead.actionResult = actionResult;
-  if (currentStatus) lead.currentStatus = currentStatus;
-
-  if (siteVisitDate !== undefined) lead.siteVisitDate = siteVisitDate;
-
-  if (followUpDate !== undefined) lead.followUpDate = followUpDate;
-
-  if (followUpTime !== undefined) lead.followUpTime = followUpTime;
-
-  if (remark !== undefined) lead.remark = remark;
+  // Update lead fields
+  Object.keys(rest).forEach(key => {
+    if (rest[key] !== undefined) lead[key] = rest[key];
+  });
+  if (followUpDate) lead.followUpDate = followUpDate;
+  if (followUpTime) lead.followUpTime = followUpTime;
 
   await lead.save();
 
+  // Log history
   await LeadHistory.create({
-    leadId: lead._id,
+    leadId: id,
     employeeId: lead.assignTo || null,
-
-    action: action || previousAction,
-    actionResult: actionResult || prevActionResult,
-    status: status || previousStatus,
-
-    prevStatus: previousStatus || null,
-    prevAction: previousAction || null,
-    prevActionResult: prevActionResult || null,
-
-    nextAction: nextAction || null,
-    currentStatus: currentStatus || previousCurrentStatus,
-
-    siteVisitDate: siteVisitDate || null,
-    followUpDate: followUpDate || null,
-    followUpTime: followUpTime || null,
-
-    remark: remark || null,
-    comment: comment || null,
-
+    ...rest,
+    followUpDate,
+    followUpTime,
     performedBy: req.user?._id || null,
     performedAt: new Date(),
   });
 
-  // 🔥 Schedule notifications if follow-up date and time are provided (nextAction optional)
+  // ✅ Schedule reminders if follow-up time provided
   if (followUpDate && followUpTime) {
-    // Fire and forget, but log any errors
-    (async () => {
+    setTimeout(async () => {
       try {
-        console.log('\n');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.log('📅 [NEXT SCHEDULE] Scheduling notifications for lead');
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        process.stdout.write(''); // Force flush
-        console.log(`🆔 Lead ID: ${id}`);
-        console.log(`📝 Lead Name: ${lead.name}`);
-        console.log(`📱 Lead Phone: ${lead.phone}`);
-        console.log(`📧 Lead Email: ${lead.email}`);
-        console.log(`👤 Assigned User: ${lead.assignTo}`);
-        console.log(`📅 Follow-up Date: ${followUpDate}`);
-        console.log(`⏰ Follow-up Time: ${followUpTime}`);
-        console.log(`🎯 Next Action ID: ${nextAction || 'N/A'}`);
+        const { scheduleReminders } = await import('../services/notificationService.js');
+        const { default: User } = await import('../models/User.modal.js');
 
-        // Import new DB-based scheduler
-        const { scheduleLeadNotificationsV2 } = await import(
-          "../services/backgroundNotificationService.js"
-        );
-        
-        // Import notification creator
-        const { createNotification } = await import(
-          "../controllers/userNotificationController.js"
-        );
+        // Parse time
+        const [hours, minutes] = followUpTime.split(':').map(Number);
+        const scheduleTime = new Date(followUpDate);
+        scheduleTime.setHours(hours, minutes, 0, 0);
 
-        // Fetch the action title and other lead details
-        const LeadActionModel = await import("../models/LeadAction.modal.js").then(m => m.default);
-        let actionTitle = "Action";
-        try {
-          const actionData = await LeadActionModel.findById(nextAction);
-          if (actionData) {
-            actionTitle = actionData.title || "Action";
-          }
-        } catch (error) {
-          console.warn(`⚠️ Could not fetch action title:`, error.message);
+        // Get user FCM token
+        const user = await User.findById(lead.assignTo);
+        if (!user?.fcmToken) {
+          console.log('⚠️ No FCM token for user');
+          return;
         }
 
-        console.log(`🎬 Action Title: ${actionTitle}`);
-
-        // Combine followUpDate and followUpTime (LOCAL TIMEZONE)
-        const [hours, minutes] = followUpTime.split(":").map(Number);
-        const scheduledDateTime = new Date(followUpDate);
-        scheduledDateTime.setHours(hours, minutes, 0, 0);
-
-        console.log(`📆 Scheduled DateTime (LOCAL): ${scheduledDateTime.toISOString()}`);
-
-        // Get the assigned user ID and fetch FCM token
-        const assignedUserId = lead.assignTo;
-        if (assignedUserId) {
-          console.log(`\n🔔 Fetching FCM token for user: ${assignedUserId}`);
-          
-          // Fetch user to get LATEST FCM token from database
-          const User = await import("../models/User.modal.js").then(m => m.default);
-          const assignedUser = await User.findById(assignedUserId);
-          const fcmToken = assignedUser?.fcmToken || "";
-
-          console.log(`🔄 Database FCM Token: ${fcmToken ? 'Found' : 'Not found'}`);
-          if (fcmToken) {
-            console.log(`✅ FCM Token found: ${fcmToken.substring(0, 30)}...`);
-            console.log(`📊 Token length: ${fcmToken.length} chars`);
-          } else {
-            console.log(`⚠️  No FCM Token found for user! User must login first.`);
-            console.log(`📱 User details: ${JSON.stringify({
-              _id: assignedUser?._id,
-              name: assignedUser?.name,
-              phone: assignedUser?.phone,
-            })}`);
-          }
-
-          // 🔥 Create initial notification in database
-          try {
-            await createNotification({
-              userId: assignedUserId,
-              title: `📅 Follow-up Scheduled: ${actionTitle}`,
-              message: `Lead follow-up scheduled for ${followUpDate} at ${followUpTime}. Action: ${actionTitle}`,
-              type: "Reminder",
-              data: {
-                leadId: String(id),
-                actionType: "scheduled",
-                actionTitle: actionTitle,
-                scheduledDateTime: scheduledDateTime.toISOString(),
-              },
-            });
-            console.log(`✅ Initial notification created in database`);
-          } catch (notifError) {
-            console.error(`❌ Error creating initial notification:`, notifError.message);
-          }
-
-          // 🔥 Schedule the reminders using V2 (database-persistent)
-          console.log(`\n📋 Creating reminder notifications...`);
-          const reminders = [
-            { minutesBefore: 30, type: 'reminder_30min' },
-            { minutesBefore: 10, type: 'reminder_10min' },
-            { minutesBefore: 1, type: 'reminder_1min' },
-            { minutesBefore: 0, type: 'reminder_exact' },
-          ];
-
-          reminders.forEach((reminder) => {
-            const remindTime = new Date(scheduledDateTime.getTime() - reminder.minutesBefore * 60 * 1000);
-            console.log(`   🔔 ${reminder.type}: ${remindTime.toISOString()}`);
-          });
-
-          console.log(`\n⚡ Token Validation Before Scheduling:`);
-          console.log(`   Token exists: ${fcmToken ? '✅ Yes' : '❌ No'}`);
-          console.log(`   Token length: ${fcmToken ? fcmToken.length : 0} chars`);
-          console.log(`   Token starts with: ${fcmToken ? fcmToken.substring(0, 20) : 'N/A'}...`);
-
-          await scheduleLeadNotificationsV2(
-            id,
-            assignedUserId,
-            scheduledDateTime,
-            nextAction,
-            lead.name || "Unknown",
-            lead.phone || "",
-            lead.email || "",
-            fcmToken
-          );
-          console.log(`\n✅ ALL NOTIFICATIONS SCHEDULED SUCCESSFULLY!`);
-          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-        } else {
-          console.log(`⚠️  No assigned user found - skipping notifications`);
-        }
+        // Schedule 4 reminders
+        await scheduleReminders(
+          id,
+          lead.assignTo,
+          scheduleTime,
+          lead.name,
+          'Follow-up',
+          user.fcmToken
+        );
       } catch (error) {
-        console.error(`❌ Error scheduling notifications:`, error.message);
-        console.error(`📋 Error stack:`, error.stack);
+        console.error('❌ Scheduling error:', error.message);
       }
-    })();
+    }, 0);
   }
 
-  return res
-    .status(200)
-    .json(new apiResponse(200, lead, "Lead status updated successfully"));
+  res.status(200).json(new apiResponse(200, lead, "Lead status updated"));
 });
 
 const deleteLead = asyncHandler(async (req, res) => {

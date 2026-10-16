@@ -1,19 +1,15 @@
 import { asyncHandler } from "../utils/asynchandler.js";
 import { apiResponse } from "../utils/apiResponse.js";
-import { sendPushNotification } from "../firebase/firebaseAdmin.js";
 import User from "../models/User.modal.js";
 
-/**
- * 🔥 Send notification to single user
- * POST /api/notifications/send-to-user
- */
+
 export const sendNotificationToUser = asyncHandler(async (req, res) => {
   const { userId, title, body, data } = req.body;
 
   if (!userId || !title || !body) {
-    return res.status(400).json(
-      new apiResponse(400, null, "userId, title, and body are required")
-    );
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "userId, title, and body are required"));
   }
 
   try {
@@ -21,15 +17,13 @@ export const sendNotificationToUser = asyncHandler(async (req, res) => {
     const user = await User.findOne({ userId });
 
     if (!user) {
-      return res.status(404).json(
-        new apiResponse(404, null, "User not found")
-      );
+      return res.status(404).json(new apiResponse(404, null, "User not found"));
     }
 
     if (!user.fcmToken) {
-      return res.status(400).json(
-        new apiResponse(400, null, "User has no FCM token registered")
-      );
+      return res
+        .status(400)
+        .json(new apiResponse(400, null, "User has no FCM token registered"));
     }
 
     console.log(`📤 Sending notification to user ${userId}...`);
@@ -44,18 +38,14 @@ export const sendNotificationToUser = asyncHandler(async (req, res) => {
 
     console.log(`✅ Notification sent successfully:`, result);
 
-    return res.status(200).json(
-      new apiResponse(
-        200,
-        result,
-        "Notification sent successfully"
-      )
-    );
+    return res
+      .status(200)
+      .json(new apiResponse(200, result, "Notification sent successfully"));
   } catch (error) {
     console.error(`❌ Error sending notification:`, error.message);
-    return res.status(500).json(
-      new apiResponse(500, null, `Error: ${error.message}`)
-    );
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
   }
 });
 
@@ -67,9 +57,11 @@ export const sendNotificationByToken = asyncHandler(async (req, res) => {
   const { fcmToken, title, body, data } = req.body;
 
   if (!fcmToken || !title || !body) {
-    return res.status(400).json(
-      new apiResponse(400, null, "fcmToken, title, and body are required")
-    );
+    return res
+      .status(400)
+      .json(
+        new apiResponse(400, null, "fcmToken, title, and body are required"),
+      );
   }
 
   try {
@@ -85,18 +77,14 @@ export const sendNotificationByToken = asyncHandler(async (req, res) => {
 
     console.log(`✅ Notification sent successfully:`, result);
 
-    return res.status(200).json(
-      new apiResponse(
-        200,
-        result,
-        "Notification sent successfully"
-      )
-    );
+    return res
+      .status(200)
+      .json(new apiResponse(200, result, "Notification sent successfully"));
   } catch (error) {
     console.error(`❌ Error sending notification:`, error.message);
-    return res.status(500).json(
-      new apiResponse(500, null, `Error: ${error.message}`)
-    );
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
   }
 });
 
@@ -108,15 +96,15 @@ export const sendBulkNotification = asyncHandler(async (req, res) => {
   const { userIds, title, body, data } = req.body;
 
   if (!userIds || !Array.isArray(userIds) || userIds.length === 0) {
-    return res.status(400).json(
-      new apiResponse(400, null, "userIds array is required")
-    );
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "userIds array is required"));
   }
 
   if (!title || !body) {
-    return res.status(400).json(
-      new apiResponse(400, null, "title and body are required")
-    );
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "title and body are required"));
   }
 
   try {
@@ -126,18 +114,20 @@ export const sendBulkNotification = asyncHandler(async (req, res) => {
     const users = await User.find({ userId: { $in: userIds } });
 
     if (users.length === 0) {
-      return res.status(404).json(
-        new apiResponse(404, null, "No users found with given userIds")
-      );
+      return res
+        .status(404)
+        .json(new apiResponse(404, null, "No users found with given userIds"));
     }
 
     // Filter users with FCM tokens
-    const usersWithTokens = users.filter(u => u.fcmToken);
+    const usersWithTokens = users.filter((u) => u.fcmToken);
 
     if (usersWithTokens.length === 0) {
-      return res.status(400).json(
-        new apiResponse(400, null, "No users with registered FCM tokens")
-      );
+      return res
+        .status(400)
+        .json(
+          new apiResponse(400, null, "No users with registered FCM tokens"),
+        );
     }
 
     // Send notifications to all users
@@ -182,14 +172,14 @@ export const sendBulkNotification = asyncHandler(async (req, res) => {
           results,
           errors: errors.length > 0 ? errors : null,
         },
-        "Bulk notification sent"
-      )
+        "Bulk notification sent",
+      ),
     );
   } catch (error) {
     console.error(`❌ Error sending bulk notification:`, error.message);
-    return res.status(500).json(
-      new apiResponse(500, null, `Error: ${error.message}`)
-    );
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
   }
 });
 
@@ -201,9 +191,9 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
   const { title, body, data, roleFilter } = req.body;
 
   if (!title || !body) {
-    return res.status(400).json(
-      new apiResponse(400, null, "title and body are required")
-    );
+    return res
+      .status(400)
+      .json(new apiResponse(400, null, "title and body are required"));
   }
 
   try {
@@ -219,9 +209,11 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
     const users = await User.find(query);
 
     if (users.length === 0) {
-      return res.status(400).json(
-        new apiResponse(400, null, "No users with registered FCM tokens")
-      );
+      return res
+        .status(400)
+        .json(
+          new apiResponse(400, null, "No users with registered FCM tokens"),
+        );
     }
 
     console.log(`📢 Broadcasting to ${users.length} users...`);
@@ -268,14 +260,14 @@ export const broadcastNotification = asyncHandler(async (req, res) => {
           results: results.slice(0, 10), // Return first 10 only
           errors: errors.length > 0 ? errors.slice(0, 10) : null,
         },
-        "Broadcast notification sent"
-      )
+        "Broadcast notification sent",
+      ),
     );
   } catch (error) {
     console.error(`❌ Error broadcasting notification:`, error.message);
-    return res.status(500).json(
-      new apiResponse(500, null, `Error: ${error.message}`)
-    );
+    return res
+      .status(500)
+      .json(new apiResponse(500, null, `Error: ${error.message}`));
   }
 });
 
