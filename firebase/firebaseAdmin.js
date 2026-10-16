@@ -4,10 +4,30 @@ import path from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const keyPath = path.join(__dirname, "firebaseServiceAccountKey.json");
 
-// Load service account
-const serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+// Load service account - try env var first (for Render), then file (for local)
+let serviceAccount;
+
+if (process.env.FIREBASE_SERVICE_ACCOUNT_KEY) {
+  // Running on Render - load from environment variable
+  try {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT_KEY);
+    console.log("✅ Firebase key loaded from environment variable");
+  } catch (error) {
+    console.error("❌ Error parsing FIREBASE_SERVICE_ACCOUNT_KEY:", error.message);
+    process.exit(1);
+  }
+} else {
+  // Running locally - load from file
+  const keyPath = path.join(__dirname, "firebaseServiceAccountKey.json");
+  try {
+    serviceAccount = JSON.parse(fs.readFileSync(keyPath, "utf8"));
+    console.log("✅ Firebase key loaded from file");
+  } catch (error) {
+    console.error("❌ Error loading Firebase key file:", error.message);
+    process.exit(1);
+  }
+}
 
 // Initialize Firebase
 admin.default.initializeApp({
